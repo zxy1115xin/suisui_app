@@ -337,6 +337,22 @@ class _HealthScreenState extends State<HealthScreen> {
     });
   }
 
+  void _openCheckinForDay(int day) {
+    final existingLog = _monthLog[day];
+    setState(() {
+      _checkinDay = day;
+      _showCheckin = true;
+      _showMonthView = false;
+      if (existingLog != null) {
+        _selFitness = existingLog[0] as String;
+        _hours = (existingLog[1] as int) / 60;
+      } else {
+        _selFitness = _fitnessTypes.first;
+        _hours = 1.0;
+      }
+    });
+  }
+
   // 根据日期推算星期标签，服务于近 7 天打卡条。
   String _weekLabel(int day) {
     const names = ['日', '一', '二', '三', '四', '五', '六'];

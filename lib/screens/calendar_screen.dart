@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
@@ -9,43 +9,43 @@ import '../important_date_store.dart';
 import '../todo_store.dart';
 import '../weight_store.dart';
 
-// 鈹€鈹€鈹€ Data 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// 数据层：农历、事件和节假日相关的静态数据与辅助方法。
 const _lunarNames = [
-  '初一',
-  '初二',
-  '初三',
-  '初四',
-  '初五',
-  '初六',
-  '初七',
-  '初八',
-  '初九',
-  '初十',
-  '十一',
-  '十二',
-  '十三',
-  '十四',
-  '十五',
-  '十六',
-  '十七',
-  '十八',
-  '十九',
-  '二十',
-  '廿一',
-  '廿二',
-  '廿三',
-  '廿四',
-  '廿五',
-  '廿六',
-  '廿七',
-  '廿八',
-  '廿九',
-  '三十',
+  '鍒濅竴',
+  '鍒濅簩',
+  '鍒濅笁',
+  '鍒濆洓',
+  '鍒濅簲',
+  '鍒濆叚',
+  '鍒濅竷',
+  '鍒濆叓',
+  '鍒濅節',
+  '鍒濆崄',
+  '鍗佷竴',
+  '鍗佷簩',
+  '鍗佷笁',
+  '鍗佸洓',
+  '鍗佷簲',
+  '鍗佸叚',
+  '鍗佷竷',
+  '鍗佸叓',
+  '鍗佷節',
+  '浜屽崄',
+  '寤夸竴',
+  '寤夸簩',
+  '寤夸笁',
+  '寤垮洓',
+  '寤夸簲',
+  '寤垮叚',
+  '寤夸竷',
+  '寤垮叓',
+  '寤夸節',
+  '涓夊崄',
 ];
-// 婕旂ず鐢ㄧ殑鍐滃巻鏃ユ湡鐢熸垚鍣細褰撳墠鐗堟湰鍙寜 30 澶╁惊鐜樉绀猴紝鍚庣画鎺ュ叆鐪熷疄鍐滃巻搴撴椂鏇挎崲杩欓噷鍗冲彲銆?
+// 农历日期生成器的演示实现：当前版本只按 30 天循环展示，后续接入真实农历库时替换这里即可。
 String _lunar(int day) => _lunarNames[(day + 2) % 30];
 
-// 鏃ュ巻鍗曞厓鏍间笂鐨勪笟鍔′簨浠讹細鐢熸棩銆佽妭姘斻€佹櫘閫氫簨浠躲€佸娉ㄥ拰鐢熺悊鏈熸爣璁伴兘浼氭眹鎬诲埌杩欓噷銆?
+// 日历单元格上的业务事件：生日、节气、普通事件、备注和生理期标记都会汇总到这里。
 class _Ev {
   final String? birthday;
   final String? solarTerm;
@@ -60,7 +60,7 @@ class _Ev {
       this.period = false});
 }
 
-// 鑺傚亣鏃ヤ俊鎭細rest 琛ㄧず璇ユ棩鏈熼渶瑕佹樉绀衡€滀紤鈥濇爣璁帮紝骞舵寜鍋囨棩棰滆壊绐佸嚭銆?
+// 节假日信息：rest 表示该日期需要显示“休”标记，并用假日颜色突出。
 class _Hol {
   final String? name;
   final bool rest;
@@ -68,7 +68,7 @@ class _Hol {
   const _Hol({this.name, this.rest = false, this.work = false});
 }
 
-// 鏈堣鍥惧簳閮ㄩ潰鏉垮拰骞磋鍥剧粺璁′娇鐢ㄧ殑绀轰緥浣撻噸鏁版嵁銆?
+// 月视图底部面板和年视图统计使用的示例体重数据。
 const _weightLog = <int, double>{
   20: 52.1,
   21: 52.4,
@@ -111,7 +111,7 @@ Map<int, _Ev> _eventsForMonth(int year, int month) {
 
   for (final birthday in ImportantDateStore.birthdays) {
     merge(DateTime(year, birthday.solarMonth, birthday.solarDay),
-        birthday: '${birthday.name}生日');
+        birthday: '${birthday.name}鐢熸棩');
   }
 
   for (final anniversary in ImportantDateStore.anniversaries) {
@@ -133,32 +133,32 @@ String? _joinLabel(String? a, String? b) {
   if (b == null || b.isEmpty) return a;
   if (a == null || a.isEmpty) return b;
   if (a.contains(b)) return a;
-  return '$a · $b';
+  return '$a 路 $b';
 }
 
 _Hol? _holidayForDate(DateTime date) => _chinaHolidays2026[_dateOnly(date)];
 
 final Map<DateTime, _Hol> _chinaHolidays2026 = {
   for (final date in _dates(DateTime(2026, 1, 1), DateTime(2026, 1, 3)))
-    date: _Hol(name: date.day == 1 ? '元旦' : null, rest: true),
-  DateTime(2026, 1, 4): const _Hol(name: '调休', work: true),
-  DateTime(2026, 2, 14): const _Hol(name: '调休', work: true),
+    date: _Hol(name: date.day == 1 ? '鍏冩棪' : null, rest: true),
+  DateTime(2026, 1, 4): const _Hol(name: '璋冧紤', work: true),
+  DateTime(2026, 2, 14): const _Hol(name: '璋冧紤', work: true),
   for (final date in _dates(DateTime(2026, 2, 15), DateTime(2026, 2, 23)))
-    date: _Hol(name: date.day == 17 ? '春节' : null, rest: true),
-  DateTime(2026, 2, 28): const _Hol(name: '调休', work: true),
+    date: _Hol(name: date.day == 17 ? '鏄ヨ妭' : null, rest: true),
+  DateTime(2026, 2, 28): const _Hol(name: '璋冧紤', work: true),
   for (final date in _dates(DateTime(2026, 4, 4), DateTime(2026, 4, 6)))
-    date: _Hol(name: date.day == 5 ? '清明节' : null, rest: true),
+    date: _Hol(name: date.day == 5 ? '娓呮槑鑺? : null, rest: true),
   for (final date in _dates(DateTime(2026, 5, 1), DateTime(2026, 5, 5)))
-    date: _Hol(name: date.day == 1 ? '劳动节' : null, rest: true),
-  DateTime(2026, 5, 9): const _Hol(name: '调休', work: true),
+    date: _Hol(name: date.day == 1 ? '鍔冲姩鑺? : null, rest: true),
+  DateTime(2026, 5, 9): const _Hol(name: '璋冧紤', work: true),
   for (final date in _dates(DateTime(2026, 6, 19), DateTime(2026, 6, 21)))
-    date: _Hol(name: date.day == 19 ? '端午节' : null, rest: true),
+    date: _Hol(name: date.day == 19 ? '绔崍鑺? : null, rest: true),
   for (final date in _dates(DateTime(2026, 9, 25), DateTime(2026, 9, 27)))
-    date: _Hol(name: date.day == 25 ? '中秋节' : null, rest: true),
-  DateTime(2026, 9, 20): const _Hol(name: '调休', work: true),
+    date: _Hol(name: date.day == 25 ? '涓鑺? : null, rest: true),
+  DateTime(2026, 9, 20): const _Hol(name: '璋冧紤', work: true),
   for (final date in _dates(DateTime(2026, 10, 1), DateTime(2026, 10, 7)))
-    date: _Hol(name: date.day == 1 ? '国庆节' : null, rest: true),
-  DateTime(2026, 10, 10): const _Hol(name: '调休', work: true),
+    date: _Hol(name: date.day == 1 ? '鍥藉簡鑺? : null, rest: true),
+  DateTime(2026, 10, 10): const _Hol(name: '璋冧紤', work: true),
 };
 
 List<DateTime> _dates(DateTime start, DateTime end) {
@@ -172,8 +172,8 @@ List<DateTime> _dates(DateTime start, DateTime end) {
   return dates;
 }
 
-const _weekLabels = ['日', '一', '二', '三', '四', '五', '六'];
-const _yearWeekLabels = ['一', '二', '三', '四', '五', '六', '日'];
+const _weekLabels = ['鏃?, '涓€', '浜?, '涓?, '鍥?, '浜?, '鍏?];
+const _yearWeekLabels = ['涓€', '浜?, '涓?, '鍥?, '浜?, '鍏?, '鏃?];
 
 DateTime get _todayDate {
   final now = DateTime.now();
@@ -187,26 +187,26 @@ int get _today => _todayDate.day;
 
 String _monthLabel(int month) {
   const labels = [
-    '一月',
-    '二月',
-    '三月',
-    '四月',
-    '五月',
-    '六月',
-    '七月',
-    '八月',
-    '九月',
-    '十月',
-    '十一月',
-    '十二月'
+    '涓€鏈?,
+    '浜屾湀',
+    '涓夋湀',
+    '鍥涙湀',
+    '浜旀湀',
+    '鍏湀',
+    '涓冩湀',
+    '鍏湀',
+    '涔濇湀',
+    '鍗佹湀',
+    '鍗佷竴鏈?,
+    '鍗佷簩鏈?
   ];
   return labels[month - 1];
 }
 
-// 椤堕儴瑙嗗浘鍒囨崲锛氭湀 / 鍛?/ 鏃?/ 骞?鍥涚灞曠ず褰㈡€併€?
+// 顶部视图切换：月、周、日、年四种展示模式。
 enum _View { month, week, day, year }
 
-// 鈹€鈹€鈹€ Main Screen 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// 主界面。
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
 
@@ -215,7 +215,7 @@ class CalendarScreen extends StatefulWidget {
 }
 
 class _CalendarScreenState extends State<CalendarScreen> {
-  // 椤甸潰绾х姸鎬侀泦涓湪杩欓噷锛氬綋鍓嶈鍥惧拰閫変腑鏃ユ湡銆?
+  // 页面状态集中在这里：当前视图和选中的日期。
   _View _view = _View.month;
   DateTime _displayedMonth = DateTime(_todayDate.year, _todayDate.month);
   int _selected = _today;
@@ -320,7 +320,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           : null,
                   onView: (v) => setState(() => _view = v)),
               Expanded(
-                // 鏍规嵁椤堕儴閫夋嫨鍒囨崲涓嶅悓瑙嗗浘锛涢€変腑鏃ユ湡閫氳繃鍥炶皟鍦ㄧ埗缁勪欢涓繚鎸佸悓姝ャ€?
+                // 根据顶部选择切换不同视图；选中日期通过回调在父组件中保持同步。
                 child: switch (_view) {
                   _View.month => _MonthView(
                       year: _displayedMonth.year,
@@ -375,7 +375,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               backgroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16)),
-              title: const Text('选择年月',
+              title: const Text('閫夋嫨骞存湀',
                   style: TextStyle(
                       fontSize: 15,
                       color: AppColors.textPrimary,
@@ -389,7 +389,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       items: List.generate(21, (i) => _todayDate.year - 10 + i)
                           .map((value) => DropdownMenuItem(
                                 value: value,
-                                child: Text('$value年'),
+                                child: Text('$value骞?),
                               ))
                           .toList(),
                       onChanged: (value) {
@@ -406,7 +406,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       items: List.generate(12, (i) => i + 1)
                           .map((value) => DropdownMenuItem(
                                 value: value,
-                                child: Text('$value月'),
+                                child: Text('$value鏈?),
                               ))
                           .toList(),
                       onChanged: (value) {
@@ -420,7 +420,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('取消',
+                  child: const Text('鍙栨秷',
                       style: TextStyle(color: AppColors.textSecondary)),
                 ),
                 TextButton(
@@ -428,7 +428,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     context,
                     DateTime(year, month),
                   ),
-                  child: const Text('确定',
+                  child: const Text('纭畾',
                       style: TextStyle(
                           color: AppColors.brand, fontWeight: FontWeight.w600)),
                 ),
@@ -453,7 +453,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               backgroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16)),
-              title: const Text('选择年份',
+              title: const Text('閫夋嫨骞翠唤',
                   style: TextStyle(
                       fontSize: 15,
                       color: AppColors.textPrimary,
@@ -464,7 +464,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 items: List.generate(31, (i) => _todayDate.year - 15 + i)
                     .map((value) => DropdownMenuItem(
                           value: value,
-                          child: Text('$value年'),
+                          child: Text('$value骞?),
                         ))
                     .toList(),
                 onChanged: (value) {
@@ -475,12 +475,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('取消',
+                  child: const Text('鍙栨秷',
                       style: TextStyle(color: AppColors.textSecondary)),
                 ),
                 TextButton(
                   onPressed: () => Navigator.pop(context, year),
-                  child: const Text('确定',
+                  child: const Text('纭畾',
                       style: TextStyle(
                           color: AppColors.brand, fontWeight: FontWeight.w600)),
                 ),
@@ -495,7 +495,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   }
 }
 
-// 鈹€鈹€鈹€ Header 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// 头部栏。
 class _Header extends StatelessWidget {
   final _View view;
   final DateTime displayDate;
@@ -510,11 +510,11 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final titleText = view == _View.year
-        ? '${displayDate.year}年'
+        ? '${displayDate.year}骞?
         : _monthLabel(displayDate.month);
     final showSubtitle = view != _View.year;
 
-    // 鏃ュ巻鏍囬鍖猴細宸︿晶灞曠ず鏈堜唤鍜屽啘鍘嗗勾浠斤紝鍙充晶鎵挎媴瑙嗗浘鍒囨崲鍜屾柊澧炲叆鍙ｃ€?
+    // 日历标题区：左侧显示月份和农历年份，右侧负责视图切换与新增入口。
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Row(
@@ -543,7 +543,7 @@ class _Header extends StatelessWidget {
                   ],
                 ),
                 if (showSubtitle)
-                  Text('${displayDate.year}年',
+                  Text('${displayDate.year}骞?,
                       style: const TextStyle(
                           fontSize: 11, color: AppColors.textSecondary)),
               ],
@@ -551,9 +551,9 @@ class _Header extends StatelessWidget {
           ),
           const Spacer(),
           _SegControl(
-            options: const ['月', '周', '日', '年'],
-            active: ['月', '周', '日', '年'][_View.values.indexOf(view)],
-            onTap: (s) => onView(_View.values[['月', '周', '日', '年'].indexOf(s)]),
+            options: const ['鏈?, '鍛?, '鏃?, '骞?],
+            active: ['鏈?, '鍛?, '鏃?, '骞?][_View.values.indexOf(view)],
+            onTap: (s) => onView(_View.values[['鏈?, '鍛?, '鏃?, '骞?].indexOf(s)]),
           ),
         ],
       ),
@@ -561,7 +561,7 @@ class _Header extends StatelessWidget {
   }
 }
 
-// 鈹€鈹€鈹€ Segmented Control 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// 分段控制器。
 class _SegControl extends StatelessWidget {
   final List<String> options;
   final String active;
@@ -571,7 +571,7 @@ class _SegControl extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 杞婚噺鍒嗘鎺т欢锛岀敤 AnimatedContainer 琛ㄨ揪褰撳墠閫変腑椤圭殑鍙嶉銆?
+    // 轻量分段控件，用 AnimatedContainer 表现当前选中项的反馈。
     return Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
@@ -614,7 +614,7 @@ class _SegControl extends StatelessWidget {
   }
 }
 
-// 鈹€鈹€鈹€ Month View 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// 月视图。
 class _MonthView extends StatefulWidget {
   final int year;
   final int month;
@@ -763,7 +763,7 @@ class _MonthViewState extends State<_MonthView> {
     );
   }
 
-  // 鎸夊浐瀹氳楂樻樉寮忔瀯寤烘棩鍘嗚锛岄伩鍏?GridView 鍦ㄤ笉鍚屽睆骞曞搴︿笅浜х敓楂樺害婧㈠嚭銆?
+  // 按固定行高构建日历行，避免 GridView 在不同屏幕宽度下出现高度溢出。
   Widget _buildCalendarGrid(
     List<_MonthDay> cells, {
     double? maxHeight,
@@ -868,7 +868,7 @@ class _MonthViewState extends State<_MonthView> {
 
     return Column(
       children: [
-        // 鏄熸湡鏍囬琛屻€?
+        // 星期标题行。
         if (_mode != _MonthCalendarMode.week) ...[
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -879,7 +879,7 @@ class _MonthViewState extends State<_MonthView> {
                           child: Text(d,
                               style: TextStyle(
                                 fontSize: 11,
-                                color: d == '日' || d == '六'
+                                color: d == '鏃? || d == '鍏?
                                     ? AppColors.holiday
                                     : AppColors.textSecondary,
                               )),
@@ -961,7 +961,7 @@ class _MonthDay {
   const _MonthDay({required this.day, required this.inCurrentMonth});
 }
 
-// 鈹€鈹€鈹€ Day Cell 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// 日期单元格。
 class _DayCell extends StatelessWidget {
   final int day;
   final bool selected;
@@ -989,7 +989,7 @@ class _DayCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 鍗曚釜鏃ユ湡鏍兼牴鎹€滀粖澶?/ 閫変腑 / 鑺傚亣鏃?/ 鐢熺悊鏈?/ 浜嬩欢鈥濈粍鍚堝喅瀹氶鑹蹭笌瑙掓爣銆?
+    // 单个日期格会根据今天、选中状态、节假日、生理期和事件组合决定颜色与角标。
     final inPeriod = ev?.period == true;
     final isWeekend = ((day + monthStartDay - 1) % 7 == 0);
     final lunarStr = ev?.solarTerm ?? _lunar(day);
@@ -1069,7 +1069,7 @@ class _DayCell extends StatelessWidget {
                         color: const Color(0xFFFDECEA),
                         borderRadius: BorderRadius.circular(3),
                       ),
-                      child: Text(hol?.work == true ? '班' : '休',
+                      child: Text(hol?.work == true ? '鐝? : '浼?,
                           style: TextStyle(
                               fontSize: 11,
                               color: AppColors.holiday,
@@ -1130,7 +1130,7 @@ class _Dot extends StatelessWidget {
   }
 }
 
-// 鈹€鈹€鈹€ Selected Day Plans 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// 选中日期的计划列表。
 class _SelectedDayPlans extends StatelessWidget {
   final int day;
   const _SelectedDayPlans({required this.day});
@@ -1152,7 +1152,7 @@ class _SelectedDayPlans extends StatelessWidget {
           children: [
             Row(
               children: [
-                Text('$day日',
+                Text('$day鏃?,
                     style: TextStyle(
                       fontSize: 22,
                       height: 1,
@@ -1181,7 +1181,7 @@ class _SelectedDayPlans extends StatelessWidget {
                       children: [
                         Icon(Icons.add, size: 14, color: AppColors.brand),
                         SizedBox(width: 3),
-                        Text('待办事项',
+                        Text('寰呭姙浜嬮」',
                             style: TextStyle(
                               fontSize: 13,
                               color: AppColors.brand,
@@ -1200,7 +1200,7 @@ class _SelectedDayPlans extends StatelessWidget {
                 if (todos.isEmpty) {
                   return const Padding(
                     padding: EdgeInsets.symmetric(vertical: 12),
-                    child: Text('暂无待办',
+                    child: Text('鏆傛棤寰呭姙',
                         style:
                             TextStyle(fontSize: 13, color: AppColors.border)),
                   );
@@ -1228,7 +1228,7 @@ class _SelectedDayPlans extends StatelessWidget {
           backgroundColor: Colors.white,
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('添加待办事项',
+          title: const Text('娣诲姞寰呭姙浜嬮」',
               style: TextStyle(
                 fontSize: 15,
                 color: AppColors.textPrimary,
@@ -1238,7 +1238,7 @@ class _SelectedDayPlans extends StatelessWidget {
             controller: controller,
             autofocus: true,
             decoration: InputDecoration(
-              hintText: '待办内容',
+              hintText: '寰呭姙鍐呭',
               hintStyle:
                   const TextStyle(fontSize: 13, color: AppColors.textSecondary),
               filled: true,
@@ -1265,12 +1265,12 @@ class _SelectedDayPlans extends StatelessWidget {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消',
+              child: const Text('鍙栨秷',
                   style: TextStyle(color: AppColors.textSecondary)),
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('添加',
+              child: const Text('娣诲姞',
                   style: TextStyle(
                     color: AppColors.brand,
                     fontWeight: FontWeight.w600,
@@ -1384,7 +1384,7 @@ class _CalendarInfoPanels extends StatelessWidget {
           backgroundColor: Colors.white,
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('添加待办事项',
+          title: const Text('娣诲姞寰呭姙浜嬮」',
               style: TextStyle(
                 fontSize: 15,
                 color: AppColors.textPrimary,
@@ -1394,7 +1394,7 @@ class _CalendarInfoPanels extends StatelessWidget {
             controller: controller,
             autofocus: true,
             decoration: InputDecoration(
-              hintText: '待办内容',
+              hintText: '寰呭姙鍐呭',
               hintStyle:
                   const TextStyle(fontSize: 13, color: AppColors.textSecondary),
               filled: true,
@@ -1421,12 +1421,12 @@ class _CalendarInfoPanels extends StatelessWidget {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消',
+              child: const Text('鍙栨秷',
                   style: TextStyle(color: AppColors.textSecondary)),
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('添加',
+              child: const Text('娣诲姞',
                   style: TextStyle(
                     color: AppColors.brand,
                     fontWeight: FontWeight.w600,
@@ -1463,24 +1463,24 @@ class _CalendarInfoPanels extends StatelessWidget {
           backgroundColor: Colors.white,
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('删除近期时间',
+          title: const Text('鍒犻櫎杩戞湡鏃堕棿',
               style: TextStyle(
                 fontSize: 15,
                 color: AppColors.textPrimary,
                 fontWeight: FontWeight.w600,
               )),
-          content: Text('确定删除「${item.title}」吗？记录页中的对应信息也会同步移除。',
+          content: Text('纭畾鍒犻櫎銆?{item.title}銆嶅悧锛熻褰曢〉涓殑瀵瑰簲淇℃伅涔熶細鍚屾绉婚櫎銆?,
               style: const TextStyle(
                   fontSize: 13, height: 1.45, color: AppColors.textSecondary)),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消',
+              child: const Text('鍙栨秷',
                   style: TextStyle(color: AppColors.textSecondary)),
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('删除',
+              child: const Text('鍒犻櫎',
                   style: TextStyle(
                       color: AppColors.holiday, fontWeight: FontWeight.w600)),
             ),
@@ -1501,7 +1501,7 @@ class _TodoInfoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _InfoPanel(
-      title: '待办事项',
+      title: '寰呭姙浜嬮」',
       action: GestureDetector(
         onTap: onAdd,
         child: const Icon(Icons.add_circle_outline,
@@ -1511,7 +1511,7 @@ class _TodoInfoCard extends StatelessWidget {
         valueListenable: TodoStore.items,
         builder: (context, todos, _) {
           if (todos.isEmpty) {
-            return const Text('暂无待办',
+            return const Text('鏆傛棤寰呭姙',
                 style: TextStyle(
                     fontSize: 15, height: 1.2, color: AppColors.border));
           }
@@ -1539,7 +1539,7 @@ class _UpcomingInfoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _InfoPanel(
-      title: '近期时间 · 未来 2 个月',
+      title: '杩戞湡鏃堕棿 路 鏈潵 2 涓湀',
       action: GestureDetector(
         onTap: onAdd,
         child: const Row(
@@ -1547,7 +1547,7 @@ class _UpcomingInfoCard extends StatelessWidget {
           children: [
             Icon(Icons.add, size: 16, color: AppColors.brand),
             SizedBox(width: 2),
-            Text('添加',
+            Text('娣诲姞',
                 style: TextStyle(
                     fontSize: 13,
                     color: AppColors.brand,
@@ -1562,7 +1562,7 @@ class _UpcomingInfoCard extends StatelessWidget {
             today: DateTime.now(),
           );
           if (items.isEmpty) {
-            return const Text('近两个月暂无重要时间',
+            return const Text('杩戜袱涓湀鏆傛棤閲嶈鏃堕棿',
                 style: TextStyle(
                     fontSize: 15, height: 1.2, color: AppColors.border));
           }
@@ -1607,10 +1607,10 @@ class _UpcomingImportantRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final days = item.date.difference(_todayDate).inDays;
     final dayText = days == 0
-        ? '今天'
+        ? '浠婂ぉ'
         : days == 1
-            ? '明天'
-            : '$days 天后';
+            ? '鏄庡ぉ'
+            : '$days 澶╁悗';
     return Container(
       padding: EdgeInsets.only(bottom: last ? 0 : 10, top: last ? 0 : 0),
       margin: EdgeInsets.only(bottom: last ? 0 : 10),
@@ -1645,7 +1645,7 @@ class _UpcomingImportantRow extends StatelessWidget {
                         color: AppColors.textPrimary,
                         fontWeight: FontWeight.w400)),
                 const SizedBox(height: 3),
-                Text('${item.dateText} · ${item.subtitle}',
+                Text('${item.dateText} 路 ${item.subtitle}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -1659,7 +1659,7 @@ class _UpcomingImportantRow extends StatelessWidget {
           Text(dayText,
               style: TextStyle(fontSize: 15, height: 1.2, color: item.color)),
           Tooltip(
-            message: '删除',
+            message: '鍒犻櫎',
             child: GestureDetector(
               onTap: onDelete,
               child: const SizedBox(
@@ -2130,7 +2130,7 @@ class _InfoPanel extends StatelessWidget {
   }
 }
 
-// 鈹€鈹€鈹€ Week View 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// 周视图。
 class _WeekView extends StatelessWidget {
   final int year;
   final int month;
@@ -2276,42 +2276,42 @@ class _WeekView extends StatelessWidget {
 
 String _lunarDateText(DateTime date) {
   const lunarMonths = [
-    '正月',
-    '二月',
-    '三月',
-    '四月',
-    '五月',
-    '六月',
-    '七月',
-    '八月',
-    '九月',
-    '十月',
-    '冬月',
-    '腊月',
+    '姝ｆ湀',
+    '浜屾湀',
+    '涓夋湀',
+    '鍥涙湀',
+    '浜旀湀',
+    '鍏湀',
+    '涓冩湀',
+    '鍏湀',
+    '涔濇湀',
+    '鍗佹湀',
+    '鍐湀',
+    '鑵婃湀',
   ];
   final lunarMonth = lunarMonths[(date.month - 1).clamp(0, 11).toInt()];
-  return '农历$lunarMonth${_lunar(date.day)}';
+  return '鍐滃巻$lunarMonth${_lunar(date.day)}';
 }
 
 String _seasonStemText(DateTime date, _Ev? ev) {
   final term = ev?.solarTerm ?? _seasonNameForMonth(date.month);
   final termStart = switch (term) {
-    '夏至' => DateTime(date.year, date.month, 24),
-    '春分' => DateTime(date.year, date.month, 20),
-    '秋分' => DateTime(date.year, date.month, 23),
-    '冬至' => DateTime(date.year, date.month, 22),
+    '澶忚嚦' => DateTime(date.year, date.month, 24),
+    '鏄ュ垎' => DateTime(date.year, date.month, 20),
+    '绉嬪垎' => DateTime(date.year, date.month, 23),
+    '鍐嚦' => DateTime(date.year, date.month, 22),
     _ => DateTime(date.year, date.month, 4),
   };
   final termDay = (date.difference(termStart).inDays + 1).clamp(1, 15).toInt();
-  return '$term · 第$termDay 日  |   甲子日 · 木';
+  return '$term 路 绗?termDay 鏃? |   鐢插瓙鏃?路 鏈?;
 }
 
 String _seasonNameForMonth(int month) {
-  if (month == 3 || month == 4) return '春分';
-  if (month == 5 || month == 6) return '夏至';
-  if (month >= 7 && month <= 9) return '秋分';
-  if (month >= 10 && month <= 12) return '冬至';
-  return '立春';
+  if (month == 3 || month == 4) return '鏄ュ垎';
+  if (month == 5 || month == 6) return '澶忚嚦';
+  if (month >= 7 && month <= 9) return '绉嬪垎';
+  if (month >= 10 && month <= 12) return '鍐嚦';
+  return '绔嬫槬';
 }
 
 class _DayView extends StatelessWidget {
@@ -2328,11 +2328,11 @@ class _DayView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 鏃ヨ鍥捐仛鐒﹂€変腑鏃ユ湡锛岄《閮ㄥ彲鍓嶅悗鍒囨崲鏃ユ湡锛屼笅鏂瑰睍绀哄叏澶╂椂闂磋酱銆?
+    // 日视图聚焦选中日期，顶部可前后切换日期，下方展示全天时间轴。
     final date = DateTime(year, month, selected);
     final lunarStr = _lunarDateText(date);
     final dayOfWeek = date.weekday % 7;
-    const weekNames = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+    const weekNames = ['鏄熸湡鏃?, '鏄熸湡涓€', '鏄熸湡浜?, '鏄熸湡涓?, '鏄熸湡鍥?, '鏄熸湡浜?, '鏄熸湡鍏?];
     final daysCount = DateUtils.getDaysInMonth(year, month);
 
     return Column(
@@ -2460,7 +2460,7 @@ class _DayNavButton extends StatelessWidget {
   }
 }
 
-// 鈹€鈹€鈹€ Year View 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// 年视图。
 class _YearView extends StatelessWidget {
   final int year;
   final ValueChanged<int> onYearSwiped;
@@ -2474,12 +2474,12 @@ class _YearView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 骞磋鍥炬槸姒傝椤碉細涓婃柟鏄剧ず缁熻鍗＄墖锛屼笅鏂圭敤杩蜂綘鏈堝巻灞曠ず鍏ㄥ勾浜嬩欢鍒嗗竷銆?
+    // 年视图是概览页：上方显示统计卡片，下方用迷你月历展示全年事件分布。
     final today = _todayDate;
     final months = [
       for (var month = 1; month <= 12; month++)
         _MiniMonthData(
-          '$month月',
+          '$month鏈?,
           DateUtils.getDaysInMonth(year, month),
           DateTime(year, month, 1).weekday - 1,
           _yearMonthEvents(year, month),
@@ -2618,7 +2618,7 @@ class _MiniMonth extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 骞磋鍥鹃噷鐨勮糠浣犳湀鍘嗛噰鐢ㄥ崱鐗囧紡鎺掔増锛屼紭鍏堜繚璇佹暣骞存祻瑙堟椂鐨勫彲璇绘€с€?
+    // 年视图中的迷你月历采用卡片式排版，优先保证全年浏览时的可读性。
     final evMap = {for (final e in data.events) e.day: e.types};
     final cells = <int?>[
       ...List.filled(data.start, null),
@@ -2940,11 +2940,11 @@ class _SyncedYearStatsPanel extends StatelessWidget {
         children: [
           Expanded(
             child: _StatCard(
-              icon: '⚖',
+              icon: '鈿?,
               value: currentWeight.toStringAsFixed(1),
-              label: '当前体重 kg',
+              label: '褰撳墠浣撻噸 kg',
               color: AppColors.brand,
-              sub: '全年最低 ${minWeight.toStringAsFixed(1)} kg',
+              sub: '鍏ㄥ勾鏈€浣?${minWeight.toStringAsFixed(1)} kg',
             ),
           ),
           const SizedBox(width: 10),
@@ -2955,11 +2955,11 @@ class _SyncedYearStatsPanel extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: _StatCard(
-              icon: '🔥',
-              value: '$fitnessDays天',
-              label: '健身打卡',
+              icon: '馃敟',
+              value: '$fitnessDays澶?,
+              label: '鍋ヨ韩鎵撳崱',
               color: AppColors.event,
-              sub: '本年目标 150天',
+              sub: '鏈勾鐩爣 150澶?,
             ),
           ),
         ],
