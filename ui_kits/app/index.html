@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>月日历</title>
+  <style>
+    :root {
+      --bg: #f4f1eb;
+      --surface: #fffdfa;
+      --surface-soft: #f8f5ef;
+      --ink: #24211d;
+      --muted: #746d64;
+      --line: #e2ddd4;
+      --accent: #1f8a70;
+      --accent-soft: #dcefe9;
+      --red: #c84b31;
+      --gold: #d69b2d;
+      --blue: #4d72b8;
+      --shadow: 0 18px 55px rgba(47, 43, 38, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0)),
+        var(--bg);
+      color: var(--ink);
+      font-family: Inter, "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+      cursor: pointer;
+    }
+
+    .app-shell {
+      width: min(1440px, 100%);
+      margin: 0 auto;
+      padding: 28px;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 20px;
+      align-items: center;
+      margin-bottom: 18px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-width: 0;
+    }
+
+    .brand-mark {
+      display: grid;
+      width: 42px;
+      height: 42px;
+      place-items: center;
+      border: 1px solid rgba(31, 138, 112, 0.28);
+      border-radius: 8px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 800;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(24px, 4vw, 42px);
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    .subline {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .icon-btn,
+    .text-btn {
+      height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--ink);
+      box-shadow: 0 6px 18px rgba(44, 38, 31, 0.06);
+    }
+
+    .icon-btn {
+      width: 38px;
+      display: grid;
+      place-items: center;
+      font-size: 19px;
+    }
+
+    .text-btn {
+      padding: 0 15px;
+      font-weight: 700;
+    }
+
+    .calendar-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 330px;
+      gap: 18px;
+      align-items: start;
+    }
+
+    .calendar-panel,
+    .agenda-panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 253, 250, 0.86);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .month-header {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 16px;
+      align-items: center;
+      padding: 20px 22px;
+      border-bottom: 1px solid var(--line);
+      background: var(--surface);
+    }
+
+    .month-title {
+      margin: 0;
+      font-size: 28px;
+      line-height: 1.15;
+    }
+
+    .month-meta {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .view-switch {
+      display: inline-grid;
+      grid-template-columns: repeat(3, minmax(54px, 1fr));
+      gap: 3px;
+      padding: 3px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface-soft);
+    }
+
+    .view-switch button {
+      height: 32px;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .view-switch .active {
+      background: var(--ink);
+      color: #fff;
+    }
+
+    .weekday-row,
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(84px, 1fr));
+    }
+
+    .weekday-row {
+      border-bottom: 1px solid var(--line);
+      background: var(--surface-soft);
+    }
+
+    .weekday-row div {
+      padding: 11px 12px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-align: right;
+    }
+
+    .day-cell {
+      position: relative;
+      min-height: 126px;
+      padding: 12px;
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 253, 250, 0.68);
+      transition: background 160ms ease, box-shadow 160ms ease;
+    }
+
+    .day-cell:nth-child(7n) {
+      border-right: 0;
+    }
+
+    .day-cell:hover,
+    .day-cell.selected {
+      background: #ffffff;
+      box-shadow: inset 0 0 0 2px rgba(31, 138, 112, 0.36);
+    }
+
+    .day-cell.outside {
+      color: #aaa297;
+      background: rgba(248, 245, 239, 0.72);
+    }
+
+    .date-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-height: 28px;
+    }
+
+    .date-number {
+      display: grid;
+      min-width: 28px;
+      height: 28px;
+      place-items: center;
+      border-radius: 8px;
+      font-weight: 800;
+    }
+
+    .today .date-number {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .weather {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .event-list {
+      display: grid;
+      gap: 6px;
+      margin-top: 9px;
+    }
+
+    .event-pill {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 25px;
+      padding: 4px 7px;
+      border-radius: 7px;
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 700;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    .event-pill::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      flex: 0 0 auto;
+      border-radius: 999px;
+      background: currentColor;
+    }
+
+    .event-pill.work {
+      background: #e4edf9;
+      color: var(--blue);
+    }
+
+    .event-pill.home {
+      background: #f9ebdf;
+      color: var(--red);
+    }
+
+    .event-pill.focus {
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .event-pill.travel {
+      background: #fbf1d8;
+      color: #9c6d08;
+    }
+
+    .more-events {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .agenda-panel {
+      position: sticky;
+      top: 24px;
+    }
+
+    .agenda-head {
+      padding: 20px;
+      border-bottom: 1px solid var(--line);
+      background: var(--surface);
+    }
+
+    .agenda-date {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.2;
+    }
+
+    .agenda-note {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .quick-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      padding: 14px;
+      border-bottom: 1px solid var(--line);
+      background: var(--surface-soft);
+    }
+
+    .stat {
+      min-width: 0;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    .stat strong {
+      display: block;
+      font-size: 19px;
+      line-height: 1;
+    }
+
+    .stat span {
+      display: block;
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .agenda-list {
+      display: grid;
+      gap: 10px;
+      padding: 16px;
+    }
+
+    .agenda-item {
+      display: grid;
+      grid-template-columns: 64px 1fr;
+      gap: 12px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    .agenda-time {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .agenda-title {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.25;
+    }
+
+    .agenda-tag {
+      display: inline-flex;
+      width: fit-content;
+      margin-top: 7px;
+      padding: 3px 7px;
+      border-radius: 999px;
+      background: var(--surface-soft);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .empty-state {
+      padding: 28px 18px;
+      color: var(--muted);
+      text-align: center;
+      font-size: 14px;
+    }
+
+    .month-strip {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(64px, 1fr));
+      gap: 8px;
+      margin-top: 18px;
+    }
+
+    .month-chip {
+      height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .month-chip.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
+    @media (max-width: 1100px) {
+      .calendar-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .agenda-panel {
+        position: static;
+      }
+    }
+
+    @media (max-width: 820px) {
+      .app-shell {
+        padding: 18px;
+      }
+
+      .topbar,
+      .month-header {
+        grid-template-columns: 1fr;
+      }
+
+      .toolbar {
+        justify-content: flex-start;
+      }
+
+      .calendar-panel {
+        overflow-x: auto;
+      }
+
+      .weekday-row,
+      .calendar-grid {
+        min-width: 700px;
+      }
+
+      .month-strip {
+        grid-template-columns: repeat(4, 1fr);
+      }
+    }
+
+    @media (max-width: 520px) {
+      .brand {
+        align-items: flex-start;
+      }
+
+      .brand-mark {
+        width: 38px;
+        height: 38px;
+      }
+
+      .month-strip {
+        grid-template-columns: repeat(3, 1fr);
+      }
+
+      .quick-stats {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">月</div>
+        <div>
+          <h1>月日历</h1>
+          <p class="subline">查看整月安排，快速定位今天、会议、旅行与个人事项。</p>
+        </div>
+      </div>
+
+      <div class="toolbar" aria-label="日历操作">
+        <button class="icon-btn" id="prevMonth" type="button" aria-label="上个月">‹</button>
+        <button class="text-btn" id="todayBtn" type="button">今天</button>
+        <button class="icon-btn" id="nextMonth" type="button" aria-label="下个月">›</button>
+      </div>
+    </header>
+
+    <section class="calendar-layout" aria-label="月日历工作区">
+      <div>
+        <section class="calendar-panel" aria-label="月视图">
+          <div class="month-header">
+            <div>
+              <h2 class="month-title" id="monthTitle"></h2>
+              <p class="month-meta" id="monthMeta"></p>
+            </div>
+            <div class="view-switch" aria-label="视图切换">
+              <button type="button">日</button>
+              <button type="button">周</button>
+              <button class="active" type="button">月</button>
+            </div>
+          </div>
+
+          <div class="weekday-row" aria-hidden="true">
+            <div>周一</div>
+            <div>周二</div>
+            <div>周三</div>
+            <div>周四</div>
+            <div>周五</div>
+            <div>周六</div>
+            <div>周日</div>
+          </div>
+
+          <div class="calendar-grid" id="calendarGrid"></div>
+        </section>
+
+        <nav class="month-strip" id="monthStrip" aria-label="月份选择"></nav>
+      </div>
+
+      <aside class="agenda-panel" aria-label="选中日期安排">
+        <div class="agenda-head">
+          <h2 class="agenda-date" id="agendaDate"></h2>
+          <p class="agenda-note" id="agendaNote"></p>
+        </div>
+
+        <div class="quick-stats">
+          <div class="stat">
+            <strong id="statEvents">0</strong>
+            <span>当日事项</span>
+          </div>
+          <div class="stat">
+            <strong id="statWork">0</strong>
+            <span>工作</span>
+          </div>
+          <div class="stat">
+            <strong id="statFree">0</strong>
+            <span>空档</span>
+          </div>
+        </div>
+
+        <div class="agenda-list" id="agendaList"></div>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const monthNames = ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"];
+    const weatherMarks = ["晴", "云", "雨", "晴", "风", "云", "晴"];
+    const today = new Date();
+    let cursor = new Date(today.getFullYear(), today.getMonth(), 1);
+    let selected = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+    const events = [
+      { date: "2026-05-04", time: "09:30", title: "产品周会", type: "work", tag: "会议" },
+      { date: "2026-05-06", time: "14:00", title: "设计评审", type: "focus", tag: "协作" },
+      { date: "2026-05-09", time: "10:00", title: "月度复盘", type: "work", tag: "工作" },
+      { date: "2026-05-09", time: "16:30", title: "晚餐采购", type: "home", tag: "生活" },
+      { date: "2026-05-12", time: "08:45", title: "杭州出差", type: "travel", tag: "行程" },
+      { date: "2026-05-13", time: "11:00", title: "客户拜访", type: "work", tag: "客户" },
+      { date: "2026-05-17", time: "15:00", title: "阅读与整理", type: "focus", tag: "专注" },
+      { date: "2026-05-21", time: "13:30", title: "预算确认", type: "work", tag: "财务" },
+      { date: "2026-05-24", time: "18:00", title: "家庭聚餐", type: "home", tag: "生活" },
+      { date: "2026-05-28", time: "09:00", title: "季度规划", type: "focus", tag: "计划" },
+      { date: "2026-06-02", time: "10:00", title: "团队同步", type: "work", tag: "会议" },
+      { date: "2026-06-08", time: "15:30", title: "材料定稿", type: "focus", tag: "交付" }
+    ];
+
+    const monthTitle = document.getElementById("monthTitle");
+    const monthMeta = document.getElementById("monthMeta");
+    const calendarGrid = document.getElementById("calendarGrid");
+    const agendaDate = document.getElementById("agendaDate");
+    const agendaNote = document.getElementById("agendaNote");
+    const agendaList = document.getElementById("agendaList");
+    const statEvents = document.getElementById("statEvents");
+    const statWork = document.getElementById("statWork");
+    const statFree = document.getElementById("statFree");
+    const monthStrip = document.getElementById("monthStrip");
+
+    function pad(value) {
+      return String(value).padStart(2, "0");
+    }
+
+    function keyOf(date) {
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+    }
+
+    function sameDay(a, b) {
+      return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+    }
+
+    function eventsFor(date) {
+      return events.filter((event) => event.date === keyOf(date)).sort((a, b) => a.time.localeCompare(b.time));
+    }
+
+    function firstCalendarDate(year, month) {
+      const first = new Date(year, month, 1);
+      const mondayIndex = (first.getDay() + 6) % 7;
+      return new Date(year, month, 1 - mondayIndex);
+    }
+
+    function renderCalendar() {
+      const year = cursor.getFullYear();
+      const month = cursor.getMonth();
+      const firstVisible = firstCalendarDate(year, month);
+      const monthEvents = events.filter((event) => {
+        const eventDate = new Date(`${event.date}T00:00:00`);
+        return eventDate.getFullYear() === year && eventDate.getMonth() === month;
+      });
+
+      monthTitle.textContent = `${year}年${monthNames[month]}`;
+      monthMeta.textContent = `${monthEvents.length} 个事项 · ${new Date(year, month + 1, 0).getDate()} 天`;
+      calendarGrid.innerHTML = "";
+
+      for (let index = 0; index < 42; index += 1) {
+        const date = new Date(firstVisible);
+        date.setDate(firstVisible.getDate() + index);
+        const cellEvents = eventsFor(date);
+        const cell = document.createElement("button");
+        cell.type = "button";
+        cell.className = "day-cell";
+        cell.setAttribute("aria-label", `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`);
+
+        if (date.getMonth() !== month) cell.classList.add("outside");
+        if (sameDay(date, today)) cell.classList.add("today");
+        if (sameDay(date, selected)) cell.classList.add("selected");
+
+        const visibleEvents = cellEvents.slice(0, 3).map((event) => (
+          `<div class="event-pill ${event.type}">${event.title}</div>`
+        )).join("");
+        const more = cellEvents.length > 3 ? `<div class="more-events">+${cellEvents.length - 3} 更多</div>` : "";
+
+        cell.innerHTML = `
+          <div class="date-row">
+            <span class="date-number">${date.getDate()}</span>
+            <span class="weather">${weatherMarks[index % weatherMarks.length]}</span>
+          </div>
+          <div class="event-list">${visibleEvents}${more}</div>
+        `;
+
+        cell.addEventListener("click", () => {
+          selected = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+          if (selected.getMonth() !== cursor.getMonth()) {
+            cursor = new Date(selected.getFullYear(), selected.getMonth(), 1);
+          }
+          renderCalendar();
+          renderAgenda();
+          renderMonthStrip();
+        });
+
+        calendarGrid.appendChild(cell);
+      }
+    }
+
+    function renderAgenda() {
+      const dayEvents = eventsFor(selected);
+      const weekday = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][selected.getDay()];
+      agendaDate.textContent = `${selected.getMonth() + 1}月${selected.getDate()}日 ${weekday}`;
+      agendaNote.textContent = sameDay(selected, today) ? "今天的节奏已经展开。" : `${selected.getFullYear()} 年的第 ${Math.ceil((selected - new Date(selected.getFullYear(), 0, 1)) / 86400000) + 1} 天`;
+      statEvents.textContent = dayEvents.length;
+      statWork.textContent = dayEvents.filter((event) => event.type === "work").length;
+      statFree.textContent = Math.max(0, 6 - dayEvents.length);
+
+      if (!dayEvents.length) {
+        agendaList.innerHTML = `<div class="empty-state">这一天没有已安排事项。</div>`;
+        return;
+      }
+
+      agendaList.innerHTML = dayEvents.map((event) => `
+        <article class="agenda-item">
+          <div class="agenda-time">${event.time}</div>
+          <div>
+            <h3 class="agenda-title">${event.title}</h3>
+            <span class="agenda-tag">${event.tag}</span>
+          </div>
+        </article>
+      `).join("");
+    }
+
+    function renderMonthStrip() {
+      monthStrip.innerHTML = monthNames.map((name, index) => `
+        <button class="month-chip ${index === cursor.getMonth() ? "active" : ""}" type="button" data-month="${index}">
+          ${name}
+        </button>
+      `).join("");
+
+      monthStrip.querySelectorAll("button").forEach((button) => {
+        button.addEventListener("click", () => {
+          cursor = new Date(cursor.getFullYear(), Number(button.dataset.month), 1);
+          selected = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+          renderCalendar();
+          renderAgenda();
+          renderMonthStrip();
+        });
+      });
+    }
+
+    document.getElementById("prevMonth").addEventListener("click", () => {
+      cursor = new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1);
+      selected = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+      renderCalendar();
+      renderAgenda();
+      renderMonthStrip();
+    });
+
+    document.getElementById("nextMonth").addEventListener("click", () => {
+      cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+      selected = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+      renderCalendar();
+      renderAgenda();
+      renderMonthStrip();
+    });
+
+    document.getElementById("todayBtn").addEventListener("click", () => {
+      cursor = new Date(today.getFullYear(), today.getMonth(), 1);
+      selected = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      renderCalendar();
+      renderAgenda();
+      renderMonthStrip();
+    });
+
+    renderCalendar();
+    renderAgenda();
+    renderMonthStrip();
+  </script>
+</body>
+</html>

@@ -1,0 +1,2260 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+import 'dart:math' as math;
+import '../app_colors.dart';
+import '../weight_store.dart';
+
+// ─── Data ─────────────────────────────────────────────────────────────
+const _fitnessTypes = ['跑步', '瑜伽', '力量', '骑行', '游泳', '走路'];
+// 当前页面使用 2026 年 4 月作为演示月份：4 月 1 日是周三，周日优先时 startDay=3。
+const _calStartDay = 3;
+const _calDays = 30;
+const _todayDay = 26;
+const _healthAccent = Color(0xFFC8765A);
+const _healthAccentLight = Color(0xFFF0D5C8);
+
+class _PeriodRecord {
+  final int id;
+  final String start;
+  final String end;
+  final int days;
+  final int cycle;
+
+  const _PeriodRecord({
+    required this.id,
+    required this.start,
+    required this.end,
+    required this.days,
+    required this.cycle,
+  });
+}
+
+class _PeriodWindow {
+  final DateTime start;
+  final DateTime end;
+  final int cycle;
+  final bool predicted;
+
+  const _PeriodWindow({
+    required this.start,
+    required this.end,
+    required this.cycle,
+    required this.predicted,
+  });
+}
+
+String _formatPeriodDate(DateTime date) =>
+    '${date.year}年${date.month}月${date.day}日';
+
+DateTime? _parsePeriodDate(String value) {
+  final full = RegExp(r'^(\d{4})年(0?[1-9]|1[0-2])月(0?[1-9]|[12]\d|3[01])日$')
+      .firstMatch(value.trim());
+  final short = RegExp(r'^(0?[1-9]|1[0-2])月(0?[1-9]|[12]\d|3[01])日$')
+      .firstMatch(value.trim());
+  final year = full == null ? 2026 : int.parse(full.group(1)!);
+  final month = int.parse((full ?? short)?.group(full == null ? 1 : 2) ?? '0');
+  final day = int.parse((full ?? short)?.group(full == null ? 2 : 3) ?? '0');
+  if (month < 1 || month > 12) return null;
+  final maxDay = DateUtils.getDaysInMonth(year, month);
+  if (day < 1 || day > maxDay) return null;
+  return DateTime(year, month, day);
+}
+
+bool _isSameMonth(DateTime value, DateTime month) =>
+    value.year == month.year && value.month == month.month;
+
+int _periodDaysBetweenDates(String start, String end) {
+  final startDate = _parsePeriodDate(start);
+  final endDate = _parsePeriodDate(end);
+  if (startDate == null || endDate == null || endDate.isBefore(startDate)) {
+    return 0;
+  }
+  return endDate.difference(startDate).inDays + 1;
+}
+
+// ─── Screen ───────────────────────────────────────────────────────────
+class HealthScreen extends StatefulWidget {
+  const HealthScreen({super.key});
+
+  @override
+  State<HealthScreen> createState() => _HealthScreenState();
+}
+
+class _HealthScreenState extends State<HealthScreen> {
+  bool? _showFitnessModule;
+  bool? _showPeriodModule;
+  bool? _showWeightModule;
+
+  bool get _fitnessVisible => _showFitnessModule ?? true;
+  bool get _periodVisible => _showPeriodModule ?? true;
+  bool get _weightVisible => _showWeightModule ?? true;
+
+  // 健身打卡记录：key 是日期，value 保存运动类型和分钟数。
+  final Map<int, List<dynamic>> _monthLog = {
+    3: ['跑步', 30],
+    7: ['瑜伽', 45],
+    10: ['力量', 60],
+    14: ['骑行', 90],
+    17: ['跑步', 45],
+    20: ['跑步', 60],
+    21: ['瑜伽', 45],
+    23: ['力量', 80],
+    24: ['跑步', 30],
+  };
+  // 控制健身卡片中“打卡面板”和“周/月视图”的展开状态。
+  bool _showCheckin = false;
+  bool _showMonthView = false;
+  int _checkinDay = _todayDay;
+  String _selFitness = '跑步';
+  double _hours = 1.0;
+
+  // 本月打卡总天数直接来自记录条数。
+  int get _totalDays => _monthLog.length;
+
+  // 汇总本月所有运动分钟数，用于卡片左上角展示运动总时间。
+  int get _totalMinutes => _monthLog.values
+      .map((log) => log[1] as int)
+      .fold(0, (sum, minutes) => sum + minutes);
+
+  // 生理期状态：列表、开始/结束日期以及当前正在编辑的字段。
+  bool _showPeriodHistory = false;
+  List<_PeriodRecord>? _periodRecords;
+
+  List<_PeriodRecord> get _safePeriodRecords {
+    final records = _periodRecords ??= [
+      const _PeriodRecord(
+          id: 4, start: '2026年4月26日', end: '2026年4月30日', days: 5, cycle: 31),
+      const _PeriodRecord(
+          id: 1, start: '2026年3月26日', end: '2026年3月31日', days: 6, cycle: 28),
+      const _PeriodRecord(
+          id: 2, start: '2026年2月26日', end: '2026年3月3日', days: 6, cycle: 28),
+      const _PeriodRecord(
+          id: 3, start: '2026年1月29日', end: '2026年2月4日', days: 7, cycle: 29),
+    ];
+    final hasAprilRecord = records.any((record) {
+      final start = _parsePeriodDate(record.start);
+      return start != null && start.year == 2026 && start.month == 4;
+    });
+    if (!hasAprilRecord) {
+      records.insert(
+          0,
+          const _PeriodRecord(
+              id: 4,
+              start: '2026年4月26日',
+              end: '2026年4月30日',
+              days: 5,
+              cycle: 31));
+    }
+    return records;
+  }
+
+  List<_PeriodRecord> get _sortedPeriodRecords {
+    return [..._safePeriodRecords]..sort((a, b) {
+        final aDate = _parsePeriodDate(a.start) ?? DateTime(1900);
+        final bDate = _parsePeriodDate(b.start) ?? DateTime(1900);
+        return bDate.compareTo(aDate);
+      });
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+  }
+
+  String _formatDuration(double h) {
+    if (h == 0) return '未记录';
+    if (h < 1) return '${(h * 60).round()}分钟';
+    if (h == h.truncate()) return '${h.toInt()}小时';
+    return '${h.toStringAsFixed(1)}小时';
+  }
+
+  String _formatMinutes(int minutes) => _formatDuration(minutes / 60);
+
+  String _formatHoursOnly(int minutes) {
+    final hours = minutes / 60;
+    if (hours == hours.truncate()) return '${hours.toInt()}小时';
+    return '${hours.toStringAsFixed(1)}小时';
+  }
+
+  void _showModuleSettings() {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '关闭模块设置',
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 140),
+      pageBuilder: (_, __, ___) => const SizedBox.shrink(),
+      transitionBuilder: (dialogContext, animation, _, __) => FadeTransition(
+        opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.96, end: 1).animate(
+            CurvedAnimation(parent: animation, curve: Curves.easeOut),
+          ),
+          alignment: Alignment.topRight,
+          child: SafeArea(
+            child: Align(
+              alignment: Alignment.topRight,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 38, right: 12),
+                child: Material(
+                  color: Colors.transparent,
+                  child: StatefulBuilder(
+                    builder: (context, modalSetState) {
+                      Widget row({
+                        required String label,
+                        required IconData icon,
+                        required bool value,
+                        required ValueChanged<bool> onChanged,
+                      }) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 3),
+                          child: Row(
+                            children: [
+                              Icon(icon, size: 17, color: _healthAccent),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  label,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                              ),
+                              Transform.scale(
+                                scale: 0.78,
+                                child: Switch.adaptive(
+                                  value: value,
+                                  onChanged: (next) {
+                                    onChanged(next);
+                                    modalSetState(() {});
+                                  },
+                                  activeThumbColor: _healthAccent,
+                                  activeTrackColor: _healthAccentLight,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+
+                      return Container(
+                        width: 176,
+                        padding: const EdgeInsets.fromLTRB(0, 10, 0, 8),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: AppColors.border),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.08),
+                              blurRadius: 18,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Padding(
+                              padding: EdgeInsets.fromLTRB(14, 0, 14, 6),
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  '模块显示',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: AppColors.textPrimary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            row(
+                              label: '健身打卡',
+                              icon: Icons.fitness_center,
+                              value: _fitnessVisible,
+                              onChanged: (next) => setState(() {
+                                _showFitnessModule = next;
+                                if (!next) {
+                                  _showCheckin = false;
+                                  _showMonthView = false;
+                                }
+                              }),
+                            ),
+                            row(
+                              label: '生理期',
+                              icon: Icons.calendar_month,
+                              value: _periodVisible,
+                              onChanged: (next) =>
+                                  setState(() => _showPeriodModule = next),
+                            ),
+                            row(
+                              label: '体重记录',
+                              icon: Icons.monitor_weight_outlined,
+                              value: _weightVisible,
+                              onChanged: (next) =>
+                                  setState(() => _showWeightModule = next),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _cancelCheckinForDay(int day) {
+    setState(() {
+      _monthLog.remove(day);
+      if (_checkinDay == day) {
+        _showCheckin = false;
+      }
+    });
+  }
+
+  void _toggleFitnessView() {
+    setState(() {
+      _showCheckin = false;
+      _showMonthView = !_showMonthView;
+    });
+  }
+
+  void _handleFitnessCardBlankTap() {
+    if (!_showCheckin && !_showMonthView) return;
+    setState(() {
+      _showCheckin = false;
+      if (_showMonthView) {
+        _showMonthView = false;
+      }
+    });
+  }
+
+  // 根据日期推算星期标签，服务于近 7 天打卡条。
+  String _weekLabel(int day) {
+    const names = ['日', '一', '二', '三', '四', '五', '六'];
+    return names[(_calStartDay + day - 1) % 7];
+  }
+
+  int _periodDaysBetween(String start, String end) {
+    return _periodDaysBetweenDates(start, end);
+  }
+
+  _PeriodWindow? _periodWindowForMonth(DateTime month) {
+    final sorted = _sortedPeriodRecords;
+    final sameMonthRecords = sorted.where((record) {
+      final start = _parsePeriodDate(record.start);
+      return start != null && _isSameMonth(start, month);
+    }).toList();
+    if (sameMonthRecords.isNotEmpty) {
+      final record = sameMonthRecords.first;
+      final start = _parsePeriodDate(record.start)!;
+      final end = _parsePeriodDate(record.end) ??
+          start.add(Duration(days: math.max(record.days, 1) - 1));
+      return _PeriodWindow(
+        start: start,
+        end: end,
+        cycle: record.cycle,
+        predicted: false,
+      );
+    }
+
+    if (sorted.isEmpty) return null;
+    final latest = sorted.first;
+    final latestStart = _parsePeriodDate(latest.start);
+    if (latestStart == null) return null;
+
+    var predictedStart = latestStart;
+    final cycle = latest.cycle;
+    final days = math.max(latest.days, 1);
+    while (predictedStart.isBefore(DateTime(month.year, month.month, 1))) {
+      predictedStart = predictedStart.add(Duration(days: cycle));
+    }
+    while (predictedStart.year > month.year ||
+        predictedStart.month > month.month) {
+      predictedStart = predictedStart.subtract(Duration(days: cycle));
+    }
+    return _PeriodWindow(
+      start: predictedStart,
+      end: predictedStart.add(Duration(days: days - 1)),
+      cycle: cycle,
+      predicted: true,
+    );
+  }
+
+  _PeriodWindow? get _currentPeriodWindow =>
+      _periodWindowForMonth(DateTime(2026, 4, _todayDay));
+
+  _PeriodWindow? get _nextPeriodWindow =>
+      _periodWindowForMonth(DateTime(2026, 5, 1));
+
+  _PeriodRecord? get _currentPeriodRecord {
+    final records = _sortedPeriodRecords.where((record) {
+      final start = _parsePeriodDate(record.start);
+      return start != null && start.year == 2026 && start.month == 4;
+    }).toList();
+    return records.isEmpty ? null : records.first;
+  }
+
+  String get _periodStatusText {
+    final window = _currentPeriodWindow;
+    if (window == null) return '暂无生理期预测';
+    final today = DateTime(2026, 4, _todayDay);
+    if (today.isBefore(window.start)) {
+      return '距离生理期还有 ${window.start.difference(today).inDays} 天';
+    }
+    if (today.isAfter(window.end)) return '本月生理期已结束';
+    return '生理期第 ${today.difference(window.start).inDays + 1} 天';
+  }
+
+  String get _periodRangeText {
+    final window = _currentPeriodWindow;
+    if (window == null) return '请先添加历史记录';
+    final prefix = window.predicted ? '预测' : '记录';
+    return '$prefix ${window.start.month}月${window.start.day}日-${window.end.month}月${window.end.day}日';
+  }
+
+  int get _periodProgressCount {
+    final window = _currentPeriodWindow;
+    if (window == null) return 0;
+    final today = DateTime(2026, 4, _todayDay);
+    if (today.isBefore(window.start)) return 0;
+    final days = today.isAfter(window.end)
+        ? window.end.difference(window.start).inDays + 1
+        : today.difference(window.start).inDays + 1;
+    return days.clamp(0, 6).toInt();
+  }
+
+  String get _nextPeriodText {
+    final window = _nextPeriodWindow;
+    if (window == null) return '请先添加历史记录';
+    final days = window.end.difference(window.start).inDays + 1;
+    return '${window.start.month}月${window.start.day}日 · 预计$days天';
+  }
+
+  String get _currentPeriodStartText {
+    final window = _currentPeriodWindow;
+    if (window == null) return '--';
+    return '${window.start.month}月${window.start.day}日';
+  }
+
+  String get _currentPeriodEndText {
+    final window = _currentPeriodWindow;
+    if (window == null) return '--';
+    return '${window.end.month}月${window.end.day}日';
+  }
+
+  Future<void> _editCurrentPeriodDate({required bool editingStart}) async {
+    final record = _currentPeriodRecord;
+    final window = _currentPeriodWindow;
+    final currentStart = _parsePeriodDate(record?.start ?? '') ??
+        window?.start ??
+        DateTime(2026, 4, _todayDay);
+    final currentEnd = _parsePeriodDate(record?.end ?? '') ??
+        window?.end ??
+        currentStart.add(const Duration(days: 4));
+    final picked = await showGeneralDialog<DateTime>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '关闭日期选择',
+      barrierColor: Colors.black.withOpacity(0.06),
+      transitionDuration: const Duration(milliseconds: 140),
+      pageBuilder: (_, __, ___) => const SizedBox.shrink(),
+      transitionBuilder: (dialogContext, animation, _, __) {
+        final curved =
+            CurvedAnimation(parent: animation, curve: Curves.easeOut);
+        return FadeTransition(
+          opacity: curved,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.97, end: 1).animate(curved),
+            child: Center(
+              child: Material(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 340),
+                  child: _PeriodDateWheelSheet(
+                    initial: editingStart ? currentStart : currentEnd,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    if (picked == null) return;
+
+    final durationDays =
+        math.max(currentEnd.difference(currentStart).inDays + 1, 1);
+    var nextStart = editingStart ? picked : currentStart;
+    var nextEnd = editingStart ? currentEnd : picked;
+    if (nextEnd.isBefore(nextStart)) {
+      if (editingStart) {
+        nextEnd = nextStart.add(Duration(days: durationDays - 1));
+      } else {
+        nextStart = nextEnd;
+      }
+    }
+
+    _savePeriodRecord(
+      id: record?.id,
+      start: _formatPeriodDate(nextStart),
+      end: _formatPeriodDate(nextEnd),
+      cycle: record?.cycle ?? window?.cycle ?? 28,
+    );
+  }
+
+  void _savePeriodRecord({
+    int? id,
+    required String start,
+    required String end,
+    required int cycle,
+  }) {
+    final days = _periodDaysBetween(start, end);
+    final record = _PeriodRecord(
+      id: id ?? DateTime.now().millisecondsSinceEpoch,
+      start: start,
+      end: end,
+      days: days,
+      cycle: cycle,
+    );
+    setState(() {
+      final records = _safePeriodRecords;
+      final index = records.indexWhere((item) => item.id == id);
+      if (index >= 0) {
+        records[index] = record;
+      } else {
+        records.insert(0, record);
+      }
+      records.sort((a, b) {
+        final aDate = _parsePeriodDate(a.start) ?? DateTime(1900);
+        final bDate = _parsePeriodDate(b.start) ?? DateTime(1900);
+        return bDate.compareTo(aDate);
+      });
+    });
+  }
+
+  void _deletePeriodRecord(int id) {
+    setState(() => _safePeriodRecords.removeWhere((item) => item.id == id));
+  }
+
+  Widget _buildMonthGrid() {
+    // 健身月视图也复用日历网格思路：先补空白格，再补 1-30 日。
+    final cells = <int?>[
+      ...List<int?>.filled(_calStartDay, null),
+      ...List.generate(_calDays, (i) => i + 1),
+    ];
+    while (cells.length % 7 != 0) {
+      cells.add(null);
+    }
+    const rowHeight = 58.0;
+    final rowCount = cells.length ~/ 7;
+    return Column(
+      children: List.generate(rowCount, (rowIdx) {
+        final start = rowIdx * 7;
+        final rowCells = cells.sublist(start, start + 7);
+        return SizedBox(
+          height: rowHeight,
+          child: Row(
+            children: rowCells.map((d) {
+              if (d == null) return const Expanded(child: SizedBox());
+              final done = _monthLog.containsKey(d);
+              final isToday = d == _todayDay;
+              final isEditing = _showCheckin && d == _checkinDay;
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () => _openCheckinForDay(d),
+                  onDoubleTap: done ? () => _cancelCheckinForDay(d) : null,
+                  behavior: HitTestBehavior.opaque,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: done ? _healthAccent : Colors.transparent,
+                          border: isEditing
+                              ? Border.all(color: _healthAccent, width: 1.5)
+                              : (isToday && !done
+                                  ? Border.all(color: _healthAccent, width: 1.5)
+                                  : null),
+                        ),
+                        child: Center(
+                          child: done
+                              ? const Icon(Icons.check,
+                                  color: Colors.white, size: 14)
+                              : Text('$d',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: isToday
+                                          ? _healthAccent
+                                          : AppColors.textSecondary,
+                                      fontWeight: isToday
+                                          ? FontWeight.w600
+                                          : FontWeight.normal)),
+                        ),
+                      ),
+                      if (done) ...[
+                        const SizedBox(height: 1),
+                        Text(_monthLog[d]![0] as String,
+                            style: const TextStyle(
+                                fontSize: 7, color: _healthAccent)),
+                        Text(_formatMinutes(_monthLog[d]![1] as int),
+                            style: const TextStyle(
+                                fontSize: 7, color: AppColors.textSecondary)),
+                      ],
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        );
+      }),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // 健康页由三块组成：健身打卡、生理期、体重记录，全部使用本地 Stateful 状态驱动。
+    return SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+        children: [
+          // 页面标题栏。
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('健康',
+                  style: TextStyle(
+                    fontFamily: 'XinDiXiaWuCha',
+                    fontSize: 22,
+                    color: AppColors.textPrimary,
+                  )),
+              GestureDetector(
+                onTap: _showModuleSettings,
+                child: const Icon(Icons.tune,
+                    size: 20, color: AppColors.textSecondary),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // ── 健身打卡 ──
+          if (_fitnessVisible)
+            _Card(
+              child: GestureDetector(
+                onTap: _handleFitnessCardBlankTap,
+                behavior: HitTestBehavior.translucent,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        // 左侧只展示本月运动天数和运动总时间。
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('运动',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textSecondary)),
+                            const SizedBox(height: 2),
+                            Text('本月已运动 $_totalDays 天',
+                                style: const TextStyle(
+                                  fontFamily: 'XinDiXiaWuCha',
+                                  fontSize: 20,
+                                  color: Color.fromARGB(255, 194, 116, 89),
+                                )),
+                            Text('运动总时间 ${_formatMinutes(_totalMinutes)}',
+                                style: const TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textSecondary)),
+                          ],
+                        ),
+                        const Spacer(),
+                        // 周视图 / 月视图切换按钮。
+                        GestureDetector(
+                          onTap: _toggleFitnessView,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: AppColors.bgTab,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(_showMonthView ? '周视图' : '月视图',
+                                style: const TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textSecondary)),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+
+                    // ── Week strip or Month grid ──
+                    if (!_showMonthView) ...[
+                      // 周视图：展示截至今天的近 7 天。
+                      Row(
+                        children: List.generate(7, (i) {
+                          final day = (_todayDay - 6 + i).clamp(1, _calDays);
+                          final log = _monthLog[day];
+                          final isToday = day == _todayDay;
+                          final done = log != null;
+                          final isEditing = _showCheckin && day == _checkinDay;
+                          return Expanded(
+                            child: GestureDetector(
+                              onTap: () => _openCheckinForDay(day),
+                              onDoubleTap:
+                                  done ? () => _cancelCheckinForDay(day) : null,
+                              behavior: HitTestBehavior.opaque,
+                              child: Column(
+                                children: [
+                                  Text(_weekLabel(day),
+                                      style: const TextStyle(
+                                          fontSize: 9,
+                                          color: AppColors.textSecondary)),
+                                  const SizedBox(height: 3),
+                                  Container(
+                                    width: 28,
+                                    height: 28,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: done
+                                          ? _healthAccent
+                                          : AppColors.bgTab,
+                                      border: isEditing
+                                          ? Border.all(
+                                              color: _healthAccent, width: 1.5)
+                                          : (isToday && !done
+                                              ? Border.all(
+                                                  color: _healthAccent,
+                                                  width: 1.5)
+                                              : null),
+                                    ),
+                                    child: Center(
+                                      child: done
+                                          ? const Icon(Icons.check,
+                                              color: Colors.white, size: 14)
+                                          : Text('$day',
+                                              style: const TextStyle(
+                                                  fontSize: 9,
+                                                  color:
+                                                      AppColors.textSecondary)),
+                                    ),
+                                  ),
+                                  if (done) ...[
+                                    const SizedBox(height: 2),
+                                    Text(log[0] as String,
+                                        style: const TextStyle(
+                                            fontSize: 8,
+                                            color: _healthAccent,
+                                            fontWeight: FontWeight.w500)),
+                                    Text(_formatHoursOnly(log[1] as int),
+                                        style: const TextStyle(
+                                            fontSize: 8,
+                                            color: AppColors.textSecondary)),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          );
+                        }),
+                      ),
+                    ] else ...[
+                      // 月视图：完整展示当月 30 天打卡情况，可点击切换完成状态。
+                      Row(
+                        children: ['日', '一', '二', '三', '四', '五', '六']
+                            .map((w) => Expanded(
+                                  child: Center(
+                                    child: Text(w,
+                                        style: const TextStyle(
+                                            fontSize: 9,
+                                            color: AppColors.textSecondary,
+                                            fontWeight: FontWeight.w500)),
+                                  ),
+                                ))
+                            .toList(),
+                      ),
+                      const SizedBox(height: 2),
+                      _buildMonthGrid(),
+                    ],
+
+                    // 打卡面板：选择运动类型和时长，确认后写入 _monthLog。
+                    if (_showCheckin) ...[
+                      const SizedBox(height: 10),
+                      const Divider(color: AppColors.border, height: 1),
+                      const SizedBox(height: 10),
+                      Text('4月$_checkinDay日运动记录',
+                          style: const TextStyle(
+                              fontSize: 11, color: AppColors.textSecondary)),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: _fitnessTypes.map((t) {
+                          final sel = t == _selFitness;
+                          return GestureDetector(
+                            onTap: () => setState(() => _selFitness = t),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: sel ? _healthAccent : AppColors.bgTab,
+                                borderRadius: BorderRadius.circular(99),
+                              ),
+                              child: Text(t,
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: sel
+                                          ? Colors.white
+                                          : AppColors.textSecondary)),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          const Text('时长',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.textSecondary)),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: SliderTheme(
+                              data: SliderTheme.of(context).copyWith(
+                                activeTrackColor: _healthAccent,
+                                thumbColor: _healthAccent,
+                                inactiveTrackColor: AppColors.bgTab,
+                                trackHeight: 3,
+                                thumbShape: const RoundSliderThumbShape(
+                                    enabledThumbRadius: 8),
+                              ),
+                              child: Slider(
+                                value: _hours,
+                                min: 0,
+                                max: 3,
+                                divisions: 12,
+                                onChanged: (v) => setState(() => _hours = v),
+                              ),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 52,
+                            child: Text(_formatDuration(_hours),
+                                style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppColors.textPrimary)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      GestureDetector(
+                        onTap: () => setState(() {
+                          _monthLog[_checkinDay] = [
+                            _selFitness,
+                            (_hours * 60).round()
+                          ];
+                          _showCheckin = false;
+                        }),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            color: _healthAccent,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Center(
+                            child: Text(
+                                '确认 · $_selFitness ${_formatDuration(_hours)}',
+                                style: const TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w500)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          if (_fitnessVisible) const SizedBox(height: 12),
+
+          // ── 生理期 ──
+          if (_periodVisible)
+            _Card(
+              child: GestureDetector(
+                onTap: () {
+                  if (_showPeriodHistory) {
+                    setState(() => _showPeriodHistory = false);
+                  }
+                },
+                behavior: HitTestBehavior.translucent,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('生理期',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textSecondary)),
+                            const SizedBox(height: 2),
+                            Wrap(
+                              spacing: 6,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                Text(_periodStatusText,
+                                    style: TextStyle(
+                                      fontFamily: 'XinDiXiaWuCha',
+                                      fontSize: 18,
+                                      color: _healthAccent,
+                                    )),
+                                Text(_periodRangeText,
+                                    style: const TextStyle(
+                                        fontSize: 11,
+                                        color: AppColors.textSecondary)),
+                              ],
+                            ),
+                          ],
+                        ),
+                        const Spacer(),
+                        GestureDetector(
+                          onTap: () => setState(
+                              () => _showPeriodHistory = !_showPeriodHistory),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.history,
+                                  size: 14, color: _healthAccent),
+                              SizedBox(width: 3),
+                              Text('历史',
+                                  style: TextStyle(
+                                      fontSize: 11, color: _healthAccent)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    // 生理期进度条：已发生天数使用深色，预计剩余天数使用浅色。
+                    Row(
+                      children: List.generate(
+                          6,
+                          (i) => Expanded(
+                                child: Container(
+                                  height: 6,
+                                  margin: const EdgeInsets.symmetric(
+                                      horizontal: 1.5),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(3),
+                                    color: i < _periodProgressCount
+                                        ? _healthAccent
+                                        : _healthAccentLight,
+                                  ),
+                                ),
+                              )),
+                    ),
+                    const SizedBox(height: 10),
+                    // 这里三选一展示：历史记录、日期选择器、开始/结束日期入口。
+                    if (_showPeriodHistory)
+                      GestureDetector(
+                        onTap: () {},
+                        behavior: HitTestBehavior.opaque,
+                        child: _PeriodHistory(
+                          records: _safePeriodRecords,
+                          onSave: _savePeriodRecord,
+                          onDelete: _deletePeriodRecord,
+                          onClose: () =>
+                              setState(() => _showPeriodHistory = false),
+                        ),
+                      )
+                    else
+                      Row(
+                        children: [
+                          Expanded(
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () =>
+                                  _editCurrentPeriodDate(editingStart: true),
+                              child: Container(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 13),
+                                decoration: BoxDecoration(
+                                  color: _healthAccentLight,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Column(children: [
+                                  const Text('开始时间',
+                                      style: TextStyle(
+                                          fontSize: 10,
+                                          color: AppColors.textSecondary)),
+                                  const SizedBox(height: 4),
+                                  Text(_currentPeriodStartText,
+                                      style: const TextStyle(
+                                          fontSize: 15,
+                                          color: _healthAccent,
+                                          fontWeight: FontWeight.w500)),
+                                ]),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () =>
+                                  _editCurrentPeriodDate(editingStart: false),
+                              child: Container(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 13),
+                                decoration: BoxDecoration(
+                                  color: AppColors.bgTab,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Column(children: [
+                                  const Text('结束时间',
+                                      style: TextStyle(
+                                          fontSize: 10,
+                                          color: AppColors.textSecondary)),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    _currentPeriodEndText,
+                                    style: const TextStyle(
+                                        fontSize: 15,
+                                        color: _healthAccent,
+                                        fontWeight: FontWeight.w500),
+                                  ),
+                                ]),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppColors.bgPage,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('下月预测',
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: Color.fromARGB(255, 168, 134, 118))),
+                          Text(_nextPeriodText,
+                              style: const TextStyle(
+                                  fontSize: 13,
+                                  color: _healthAccent,
+                                  fontWeight: FontWeight.w500)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          if (_periodVisible) const SizedBox(height: 12),
+
+          // ── 体重记录 ──
+          if (_weightVisible) const _WeightCard(),
+          if (_weightVisible) const SizedBox(height: 12),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Period History ────────────────────────────────────────────────────
+class _PeriodHistory extends StatefulWidget {
+  final List<_PeriodRecord>? records;
+  final void Function({
+    int? id,
+    required String start,
+    required String end,
+    required int cycle,
+  }) onSave;
+  final ValueChanged<int> onDelete;
+  final VoidCallback onClose;
+
+  const _PeriodHistory({
+    required this.records,
+    required this.onSave,
+    required this.onDelete,
+    required this.onClose,
+  });
+
+  @override
+  State<_PeriodHistory> createState() => _PeriodHistoryState();
+}
+
+class _PeriodHistoryState extends State<_PeriodHistory> {
+  Future<void> _startAdd() => _openEditor();
+
+  Future<void> _startEdit(_PeriodRecord record) => _openEditor(record: record);
+
+  Future<void> _openEditor({_PeriodRecord? record}) async {
+    final result = await showGeneralDialog<_PeriodRecordEditResult>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '关闭生理期记录编辑',
+      barrierColor: Colors.black.withOpacity(0.06),
+      transitionDuration: const Duration(milliseconds: 140),
+      pageBuilder: (_, __, ___) => _PeriodRecordEditor(record: record),
+      transitionBuilder: (dialogContext, animation, _, child) {
+        final curved =
+            CurvedAnimation(parent: animation, curve: Curves.easeOut);
+        return FadeTransition(
+          opacity: curved,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.97, end: 1).animate(curved),
+            alignment: Alignment.topCenter,
+            child: SafeArea(
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 170, 18, 20),
+                  child: Material(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 360),
+                      child: child,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    if (result == null) return;
+    widget.onSave(
+      id: record?.id,
+      start: _formatPeriodDate(result.start),
+      end: _formatPeriodDate(result.end),
+      cycle: result.cycle,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final records = [...(widget.records ?? const <_PeriodRecord>[])]
+      ..sort((a, b) {
+        final aDate = _parsePeriodDate(a.start) ?? DateTime(1900);
+        final bDate = _parsePeriodDate(b.start) ?? DateTime(1900);
+        return bDate.compareTo(aDate);
+      });
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Text('历史记录',
+                style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+            const Spacer(),
+            GestureDetector(
+              onTap: _startAdd,
+              child: const Row(
+                children: [
+                  Icon(Icons.add, size: 14, color: _healthAccent),
+                  SizedBox(width: 3),
+                  Text('新增',
+                      style: TextStyle(fontSize: 11, color: _healthAccent)),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: records.isEmpty
+              ? 0
+              : (records.length > 3 ? 168 : records.length * 56.0),
+          child: ListView.builder(
+            padding: EdgeInsets.zero,
+            physics: records.length > 3
+                ? const BouncingScrollPhysics()
+                : const NeverScrollableScrollPhysics(),
+            itemCount: records.length,
+            itemBuilder: (context, i) {
+              final p = records[i];
+              return GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onDoubleTap: () => _startEdit(p),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(0, 8, 14, 8),
+                  decoration: BoxDecoration(
+                    border: i < records.length - 1
+                        ? const Border(
+                            bottom:
+                                BorderSide(color: AppColors.border, width: 0.5))
+                        : null,
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        margin: const EdgeInsets.only(right: 8, top: 2),
+                        decoration: const BoxDecoration(
+                            shape: BoxShape.circle, color: _healthAccent),
+                      ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('${p.start} → ${p.end}',
+                                style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppColors.textPrimary)),
+                            Text('${p.days}天 · 周期${p.cycle}天',
+                                style: const TextStyle(
+                                    fontSize: 10,
+                                    color: AppColors.textSecondary)),
+                          ],
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () => widget.onDelete(p.id),
+                        child: const Icon(Icons.delete_outline,
+                            size: 14, color: AppColors.holiday),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        GestureDetector(
+          onTap: widget.onClose,
+          child: const Center(
+            child: Padding(
+              padding: EdgeInsets.only(top: 10),
+              child: Text('收起',
+                  style: TextStyle(fontSize: 12, color: _healthAccent)),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PeriodRecordEditResult {
+  final DateTime start;
+  final DateTime end;
+  final int cycle;
+  const _PeriodRecordEditResult({
+    required this.start,
+    required this.end,
+    required this.cycle,
+  });
+}
+
+class _PeriodRecordEditor extends StatefulWidget {
+  final _PeriodRecord? record;
+  const _PeriodRecordEditor({this.record});
+
+  @override
+  State<_PeriodRecordEditor> createState() => _PeriodRecordEditorState();
+}
+
+class _PeriodRecordEditorState extends State<_PeriodRecordEditor> {
+  late DateTime _startDate;
+  late DateTime _endDate;
+  late final TextEditingController _cycleCtrl;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final record = widget.record;
+    _startDate = _parsePeriodDate(record?.start ?? '') ?? DateTime(2026, 4, 22);
+    _endDate = _parsePeriodDate(record?.end ?? '') ??
+        _startDate.add(const Duration(days: 5));
+    _cycleCtrl = TextEditingController(text: '${record?.cycle ?? 28}');
+  }
+
+  @override
+  void dispose() {
+    _cycleCtrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final cycle = int.tryParse(_cycleCtrl.text.trim());
+    if (_endDate.isBefore(_startDate)) {
+      setState(() => _error = '结束时间不能早于开始时间');
+      return;
+    }
+    if (cycle == null || cycle < 15 || cycle > 60) {
+      setState(() => _error = '周期请填写 15-60 之间的天数');
+      return;
+    }
+    Navigator.pop(
+      context,
+      _PeriodRecordEditResult(start: _startDate, end: _endDate, cycle: cycle),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final editing = widget.record != null;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(editing ? '修改生理期记录' : '新增生理期记录',
+              style: const TextStyle(
+                  fontSize: 15,
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _PeriodDateField(
+                  label: '开始',
+                  value: _startDate,
+                  onChanged: (value) => setState(() {
+                    _startDate = value;
+                    _endDate = value.add(const Duration(days: 5));
+                  }),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _PeriodDateField(
+                  label: '结束',
+                  value: _endDate,
+                  onChanged: (value) => setState(() => _endDate = value),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _PeriodTextField(ctrl: _cycleCtrl, hint: '周期 28'),
+          if (_error != null) ...[
+            const SizedBox(height: 6),
+            Text(_error!,
+                style: const TextStyle(fontSize: 10, color: AppColors.holiday)),
+          ],
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppColors.bgTab,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Center(
+                      child: Text('取消',
+                          style: TextStyle(
+                              fontSize: 12, color: AppColors.textSecondary)),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: GestureDetector(
+                  onTap: _submit,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: _healthAccent,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Center(
+                      child: Text('保存',
+                          style: TextStyle(fontSize: 12, color: Colors.white)),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PeriodDateField extends StatelessWidget {
+  final String label;
+  final DateTime value;
+  final ValueChanged<DateTime> onChanged;
+  const _PeriodDateField({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  Future<void> _openPicker(BuildContext context) async {
+    final picked = await showGeneralDialog<DateTime>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '关闭日期选择',
+      barrierColor: Colors.black.withOpacity(0.06),
+      transitionDuration: const Duration(milliseconds: 140),
+      pageBuilder: (_, __, ___) => const SizedBox.shrink(),
+      transitionBuilder: (dialogContext, animation, _, __) {
+        final curved =
+            CurvedAnimation(parent: animation, curve: Curves.easeOut);
+        return FadeTransition(
+          opacity: curved,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.97, end: 1).animate(curved),
+            child: Center(
+              child: Material(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 340),
+                  child: _PeriodDateWheelSheet(initial: value),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    if (picked != null) onChanged(picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => _openPicker(context),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label,
+                style: const TextStyle(
+                    fontSize: 10, color: AppColors.textSecondary)),
+            const SizedBox(height: 2),
+            Text(_formatPeriodDate(value),
+                style: const TextStyle(
+                    fontSize: 12, color: AppColors.textPrimary)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PeriodDateWheelSheet extends StatefulWidget {
+  final DateTime initial;
+  const _PeriodDateWheelSheet({required this.initial});
+
+  @override
+  State<_PeriodDateWheelSheet> createState() => _PeriodDateWheelSheetState();
+}
+
+class _PeriodDateWheelSheetState extends State<_PeriodDateWheelSheet> {
+  static const _years = [2020, 2021, 2022, 2023, 2024, 2025, 2026];
+  late int _year;
+  late int _month;
+  late int _day;
+
+  @override
+  void initState() {
+    super.initState();
+    _year = widget.initial.year.clamp(_years.first, _years.last).toInt();
+    _month = widget.initial.month;
+    _day = widget.initial.day;
+  }
+
+  void _normalizeDay() {
+    final maxDay = DateUtils.getDaysInMonth(_year, _month);
+    if (_day > maxDay) _day = maxDay;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final maxDay = DateUtils.getDaysInMonth(_year, _month);
+    return SafeArea(
+      top: false,
+      child: SizedBox(
+        height: math.min(280.0, MediaQuery.of(context).size.height * 0.42),
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                child: Row(
+                  children: [
+                    const Text('选择日期',
+                        style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary)),
+                    const Spacer(),
+                    GestureDetector(
+                      onTap: () =>
+                          Navigator.pop(context, DateTime(_year, _month, _day)),
+                      child: const Text('完成',
+                          style: TextStyle(
+                              fontSize: 13,
+                              color: _healthAccent,
+                              fontWeight: FontWeight.w500)),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(
+                height: 224,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: CupertinoPicker(
+                        itemExtent: 34,
+                        scrollController: FixedExtentScrollController(
+                            initialItem: _years
+                                .indexOf(_year)
+                                .clamp(0, _years.length - 1)
+                                .toInt()),
+                        onSelectedItemChanged: (index) => setState(() {
+                          _year = _years[index];
+                          _normalizeDay();
+                        }),
+                        children: _years
+                            .map((year) => Center(child: Text('$year年')))
+                            .toList(),
+                      ),
+                    ),
+                    Expanded(
+                      child: CupertinoPicker(
+                        itemExtent: 34,
+                        scrollController: FixedExtentScrollController(
+                            initialItem: _month - 1),
+                        onSelectedItemChanged: (index) => setState(() {
+                          _month = index + 1;
+                          _normalizeDay();
+                        }),
+                        children: List.generate(
+                          12,
+                          (i) => Center(child: Text('${i + 1}月')),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: CupertinoPicker(
+                        itemExtent: 34,
+                        scrollController:
+                            FixedExtentScrollController(initialItem: _day - 1),
+                        onSelectedItemChanged: (index) =>
+                            setState(() => _day = index + 1),
+                        children: List.generate(
+                          maxDay,
+                          (i) => Center(child: Text('${i + 1}日')),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PeriodTextField extends StatelessWidget {
+  final TextEditingController ctrl;
+  final String hint;
+  const _PeriodTextField({required this.ctrl, required this.hint});
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: ctrl,
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle:
+            const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: AppColors.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: AppColors.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: _healthAccent),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        isDense: true,
+      ),
+      style: const TextStyle(fontSize: 12, color: AppColors.textPrimary),
+    );
+  }
+}
+
+// ─── Weight Card ──────────────────────────────────────────────────────
+class _WeightPoint {
+  final int day;
+  final double weight;
+  final DateTime? date;
+  const _WeightPoint(this.day, this.weight, {this.date});
+}
+
+class _WeightCard extends StatefulWidget {
+  const _WeightCard();
+
+  @override
+  State<_WeightCard> createState() => _WeightCardState();
+}
+
+class _WeightCardState extends State<_WeightCard> {
+  int _selectedDay = _todayDay;
+  final _scrollCtrl = ScrollController();
+  bool? _didInitialScroll;
+  bool? _showWeightMonthView;
+
+  @override
+  void dispose() {
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
+  DateTime get _todayDate => appToday;
+
+  double get _todayWeight => _weightForDate(_todayDate);
+  int get _visibleWeightStartDay => math.max(1, _todayDay - 6);
+  int get _visibleSelectedDay =>
+      _selectedDay < _visibleWeightStartDay || _selectedDay > _todayDay
+          ? _todayDay
+          : _selectedDay;
+  bool get _isWeightMonthView => _showWeightMonthView ?? false;
+
+  double _weightForDate(DateTime date) => WeightStore.weightForDate(date);
+
+  double _weightForDay(int day) => _weightForDate(DateTime(2026, 4, day));
+
+  Future<void> _editWeightDate(DateTime date) async {
+    final value = await showGeneralDialog<double>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '关闭体重填写框',
+      barrierColor: Colors.black.withOpacity(0.06),
+      transitionDuration: const Duration(milliseconds: 140),
+      pageBuilder: (_, __, ___) => _WeightEditPopup(
+        label: '${date.month}月${date.day}日',
+        initialWeight: _weightForDate(date),
+      ),
+      transitionBuilder: (dialogContext, animation, _, child) {
+        final curved =
+            CurvedAnimation(parent: animation, curve: Curves.easeOut);
+        return FadeTransition(
+          opacity: curved,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.97, end: 1).animate(curved),
+            alignment: Alignment.topCenter,
+            child: SafeArea(
+              child: AnimatedPadding(
+                duration: const Duration(milliseconds: 160),
+                curve: Curves.easeOut,
+                padding: EdgeInsets.fromLTRB(
+                  18,
+                  150,
+                  18,
+                  MediaQuery.of(dialogContext).viewInsets.bottom + 20,
+                ),
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: Material(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 340),
+                      child: child,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    if (value == null) return;
+    setState(() {
+      if (date.year == 2026 && date.month == 4) {
+        _selectedDay = date.day;
+      }
+      WeightStore.setWeight(date, value);
+    });
+  }
+
+  Future<void> _editWeight(int day) {
+    return _editWeightDate(DateTime(2026, 4, day));
+  }
+
+  List<_WeightPoint> get _chartPoints {
+    return List.generate(
+      _todayDay - _visibleWeightStartDay + 1,
+      (i) {
+        final day = _visibleWeightStartDay + i;
+        final date = DateTime(2026, 4, day);
+        return _WeightPoint(day, _weightForDate(date), date: date);
+      },
+    );
+  }
+
+  List<_WeightPoint> get _ninetyDayPoints {
+    return List.generate(90, (i) {
+      final daysAgo = 89 - i;
+      final date = _todayDate.subtract(Duration(days: daysAgo));
+      return _WeightPoint(i + 1, _weightForDate(date), date: date);
+    });
+  }
+
+  String get _recentChangeText {
+    final first = _weightForDay(_visibleWeightStartDay);
+    final current = _weightForDay(_visibleSelectedDay);
+    final diff = current - first;
+    if (diff.abs() < 0.05) return '近7天体重基本持平';
+    final label = diff < 0 ? '减重' : '增重';
+    return '近7天$label ${diff.abs().toStringAsFixed(1)} kg';
+  }
+
+  String get _ninetyDayChangeText {
+    final points = _ninetyDayPoints;
+    final diff = points.last.weight - points.first.weight;
+    if (diff.abs() < 0.05) return '近90天体重基本持平';
+    final label = diff < 0 ? '减重' : '增重';
+    return '近90天$label ${diff.abs().toStringAsFixed(1)} kg';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final points = _chartPoints;
+    final ninetyDayPoints = _ninetyDayPoints;
+
+    return _Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(_isWeightMonthView ? '近90天体重变化' : '近7天体重记录',
+                        style: const TextStyle(
+                            fontSize: 11, color: AppColors.textSecondary)),
+                    const SizedBox(height: 2),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => _editWeight(_todayDay),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          Text('今日体重 ${_todayWeight.toStringAsFixed(1)}',
+                              style: const TextStyle(
+                                fontFamily: 'XinDiXiaWuCha',
+                                fontSize: 21,
+                                color: Color.fromARGB(255, 194, 116, 89),
+                              )),
+                          const SizedBox(width: 3),
+                          const Text('kg',
+                              style: TextStyle(
+                                  fontSize: 13,
+                                  color: AppColors.textSecondary)),
+                          const SizedBox(width: 6),
+                          const Icon(Icons.edit_outlined,
+                              size: 14, color: AppColors.textSecondary),
+                        ],
+                      ),
+                    ),
+                    Text('4月$_todayDay日',
+                        style: const TextStyle(
+                            fontSize: 10, color: AppColors.textSecondary)),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  color: AppColors.bgPage,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+                child: Row(
+                  children: [
+                    _WeightViewChip(
+                      label: '7天',
+                      selected: !_isWeightMonthView,
+                      onTap: () => setState(() => _showWeightMonthView = false),
+                    ),
+                    _WeightViewChip(
+                      label: '月视图',
+                      selected: _isWeightMonthView,
+                      onTap: () => setState(() => _showWeightMonthView = true),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_isWeightMonthView)
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final chartWidth = constraints.maxWidth;
+                return GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTapUp: (details) {
+                    final segment =
+                        chartWidth / math.max(ninetyDayPoints.length, 1);
+                    final index = (details.localPosition.dx / segment)
+                        .floor()
+                        .clamp(0, ninetyDayPoints.length - 1)
+                        .toInt();
+                    final date = ninetyDayPoints[index].date ?? _todayDate;
+                    _editWeightDate(date);
+                  },
+                  child: SizedBox(
+                    height: 132,
+                    width: chartWidth,
+                    child: CustomPaint(
+                      painter: _WeightNinetyDayPainter(points: ninetyDayPoints),
+                      child: const SizedBox.expand(),
+                    ),
+                  ),
+                );
+              },
+            )
+          else
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final chartWidth = constraints.maxWidth;
+                if (_didInitialScroll != true) {
+                  _didInitialScroll = true;
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (!_scrollCtrl.hasClients) return;
+                    _scrollCtrl.jumpTo(_scrollCtrl.position.maxScrollExtent);
+                  });
+                }
+                return SingleChildScrollView(
+                  controller: _scrollCtrl,
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTapUp: (details) {
+                      final segment =
+                          chartWidth / math.max(points.length - 1, 1);
+                      final index = (details.localPosition.dx / segment)
+                          .round()
+                          .clamp(0, points.length - 1)
+                          .toInt();
+                      final day = points[index].day;
+                      setState(() => _selectedDay = day);
+                      _editWeight(day);
+                    },
+                    child: SizedBox(
+                      width: chartWidth,
+                      height: 132,
+                      child: CustomPaint(
+                        painter: _WeightChartPainter(
+                          points: points,
+                          selectedDay: _visibleSelectedDay,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            decoration: BoxDecoration(
+              color: AppColors.bgPage,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  (_isWeightMonthView
+                          ? ninetyDayPoints.last.weight <=
+                              ninetyDayPoints.first.weight
+                          : _weightForDay(_visibleSelectedDay) <=
+                              _weightForDay(_visibleWeightStartDay))
+                      ? Icons.trending_down
+                      : Icons.trending_up,
+                  size: 16,
+                  color: _healthAccent,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                    _isWeightMonthView
+                        ? _ninetyDayChangeText
+                        : _recentChangeText,
+                    style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w500)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WeightEditPopup extends StatefulWidget {
+  final String label;
+  final double initialWeight;
+  const _WeightEditPopup({
+    required this.label,
+    required this.initialWeight,
+  });
+
+  @override
+  State<_WeightEditPopup> createState() => _WeightEditPopupState();
+}
+
+class _WeightEditPopupState extends State<_WeightEditPopup> {
+  late final TextEditingController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl =
+        TextEditingController(text: widget.initialWeight.toStringAsFixed(1));
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final parsed = double.tryParse(_ctrl.text.trim());
+    if (parsed == null || parsed < 30 || parsed > 150) return;
+    Navigator.pop(context, parsed);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('记录 ${widget.label}体重',
+              style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary)),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _ctrl,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            onSubmitted: (_) => _save(),
+            decoration: InputDecoration(
+              suffixText: 'kg',
+              filled: true,
+              fillColor: AppColors.bgPage,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: AppColors.border),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: _healthAccent),
+              ),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            ),
+            style: const TextStyle(fontSize: 15, color: AppColors.textPrimary),
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton(
+            onPressed: _save,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _healthAccent,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+              padding: const EdgeInsets.symmetric(vertical: 11),
+            ),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WeightViewChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  const _WeightViewChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        decoration: BoxDecoration(
+          color: selected ? Colors.white : Colors.transparent,
+          borderRadius: BorderRadius.circular(99),
+          boxShadow: selected
+              ? const [
+                  BoxShadow(
+                      color: AppColors.shadow,
+                      blurRadius: 3,
+                      offset: Offset(0, 1))
+                ]
+              : null,
+        ),
+        child: Text(label,
+            style: TextStyle(
+              fontSize: 11,
+              color: selected ? _healthAccent : AppColors.textSecondary,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+            )),
+      ),
+    );
+  }
+}
+
+class _WeightNinetyDayPainter extends CustomPainter {
+  final List<_WeightPoint> points;
+  const _WeightNinetyDayPainter({required this.points});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (points.isEmpty) return;
+    final weights = points.map((point) => point.weight).toList();
+    final min = weights.reduce(math.min);
+    final max = weights.reduce(math.max);
+    final range = (max - min).abs() < 0.01 ? 0.5 : max - min;
+    final chartHeight = size.height - 26;
+    final barGap = size.width / points.length;
+    final barWidth = math.max(1.6, barGap * 0.52);
+    final bottomY = chartHeight + 4;
+
+    final gridPaint = Paint()
+      ..color = AppColors.border.withAlpha(110)
+      ..strokeWidth = 0.7;
+    canvas.drawLine(const Offset(0, 8), Offset(size.width, 8), gridPaint);
+    canvas.drawLine(Offset(0, chartHeight / 2 + 6),
+        Offset(size.width, chartHeight / 2 + 6), gridPaint);
+    canvas.drawLine(Offset(0, bottomY), Offset(size.width, bottomY), gridPaint);
+
+    for (int i = 0; i < points.length; i++) {
+      final normalized = (points[i].weight - min) / range;
+      final barHeight = 8 + normalized * (chartHeight - 18);
+      final x = i * barGap + (barGap - barWidth) / 2;
+      final top = bottomY - barHeight;
+      final paint = Paint()
+        ..color = _healthAccent.withAlpha((120 + normalized * 95).round())
+        ..style = PaintingStyle.fill;
+      final rect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(x, top, barWidth, math.max(1.5, barHeight)),
+        const Radius.circular(3),
+      );
+      canvas.drawRRect(rect, paint);
+    }
+
+    final textPainter = TextPainter(textDirection: TextDirection.ltr);
+    void label(String text, double x) {
+      textPainter.text = TextSpan(
+        text: text,
+        style: const TextStyle(fontSize: 8, color: AppColors.textSecondary),
+      );
+      textPainter.layout();
+      final dx = (x - textPainter.width / 2)
+          .clamp(0.0, size.width - textPainter.width)
+          .toDouble();
+      textPainter.paint(
+        canvas,
+        Offset(dx, size.height - 15),
+      );
+    }
+
+    label('90天前', 0);
+    label('60天', size.width / 3);
+    label('30天', size.width * 2 / 3);
+    label('今天', size.width);
+
+    textPainter.text = TextSpan(
+      text: '${points.last.weight.toStringAsFixed(1)}kg',
+      style: const TextStyle(
+          fontSize: 10, color: _healthAccent, fontWeight: FontWeight.w600),
+    );
+    textPainter.layout();
+    textPainter.paint(canvas, Offset(size.width - textPainter.width, 0));
+  }
+
+  @override
+  bool shouldRepaint(covariant _WeightNinetyDayPainter oldDelegate) {
+    return oldDelegate.points != points;
+  }
+}
+
+// ─── Weight Chart Painter ─────────────────────────────────────────────
+class _WeightChartPainter extends CustomPainter {
+  final List<_WeightPoint> points;
+  final int selectedDay;
+  const _WeightChartPainter({
+    required this.points,
+    required this.selectedDay,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (points.isEmpty) return;
+    final weights = points.map((p) => p.weight).toList();
+    final min = weights.reduce(math.min);
+    final max = weights.reduce(math.max);
+    final range = (max - min).abs() < 0.01 ? 0.5 : max - min;
+    final chartHeight = size.height - 28;
+    final step = size.width / math.max(points.length - 1, 1);
+    final offsets = List.generate(points.length, (i) {
+      final x = i * step;
+      final y = chartHeight -
+          ((points[i].weight - min) / range) * (chartHeight - 18) +
+          4;
+      return Offset(x, y);
+    });
+
+    final gridPaint = Paint()
+      ..color = AppColors.border.withAlpha(120)
+      ..strokeWidth = 0.6;
+    for (int i = 0; i < 3; i++) {
+      final y = 8 + i * (chartHeight - 8) / 2;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+    }
+
+    final linePaint = Paint()
+      ..color = _healthAccent
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final path = Path()..moveTo(offsets.first.dx, offsets.first.dy);
+    for (int i = 1; i < offsets.length; i++) {
+      path.lineTo(offsets[i].dx, offsets[i].dy);
+    }
+    canvas.drawPath(path, linePaint);
+
+    final textPainter = TextPainter(textDirection: TextDirection.ltr);
+    for (int i = 0; i < points.length; i++) {
+      final selected = points[i].day == selectedDay;
+      final dotPaint = Paint()
+        ..color = selected ? _healthAccent : _healthAccent.withAlpha(210)
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(offsets[i], selected ? 5 : 3, dotPaint);
+      if (selected) {
+        textPainter.text = TextSpan(
+          text: '${points[i].weight.toStringAsFixed(1)}kg',
+          style: const TextStyle(fontSize: 9, color: _healthAccent),
+        );
+        textPainter.layout();
+        textPainter.paint(canvas, offsets[i] + const Offset(-14, -20));
+      }
+      textPainter.text = TextSpan(
+        text: '${points[i].day}日',
+        style: TextStyle(
+          fontSize: 7,
+          color: selected ? _healthAccent : AppColors.textSecondary,
+          fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+        ),
+      );
+      textPainter.layout();
+      textPainter.paint(canvas,
+          Offset(offsets[i].dx - textPainter.width / 2, size.height - 16));
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _WeightChartPainter oldDelegate) {
+    return oldDelegate.points != points ||
+        oldDelegate.selectedDay != selectedDay;
+  }
+}
+
+// ─── Card wrapper ─────────────────────────────────────────────────────
+class _Card extends StatelessWidget {
+  final Widget child;
+  const _Card({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    // 健康页统一卡片容器，保持边框、圆角和轻阴影一致。
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+        boxShadow: const [
+          BoxShadow(
+              color: AppColors.shadow, blurRadius: 4, offset: Offset(0, 1))
+        ],
+      ),
+      child: child,
+    );
+  }
+}
