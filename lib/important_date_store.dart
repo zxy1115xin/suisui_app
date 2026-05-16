@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'app_colors.dart';
@@ -347,8 +346,10 @@ class ImportantDateStore {
     required DateTime today,
     int months = 2,
   }) {
+    if (months <= 0) return const [];
+
     final start = dateOnly(today);
-    final end = DateTime(start.year, start.month + months, start.day);
+    final end = dateOnly(DateTime(start.year, start.month + months, start.day));
     final items = <UpcomingImportantDate>[];
 
     for (final event in _events) {
@@ -398,6 +399,60 @@ class ImportantDateStore {
     }
 
     items.sort((a, b) => a.date.compareTo(b.date));
+    return items;
+  }
+
+  static List<UpcomingImportantDate> allImportantDates({
+    required DateTime today,
+  }) {
+    final start = dateOnly(today);
+    final items = <UpcomingImportantDate>[];
+
+    for (final event in _events) {
+      items.add(UpcomingImportantDate(
+        type: ImportantDateType.event,
+        id: event.id,
+        title: event.title,
+        subtitle: event.note.isEmpty ? '重要事件' : event.note,
+        date: event.startDate,
+        dateText: event.date,
+        color: const Color(0xFFD76F72),
+      ));
+    }
+
+    for (final birthday in _birthdays) {
+      final date = birthday.nextBirthdayFrom(start);
+      items.add(UpcomingImportantDate(
+        type: ImportantDateType.birthday,
+        id: birthday.id,
+        title: '${birthday.name}生日',
+        subtitle: '${birthday.ageFrom(start)}岁 · 阳历 ${birthday.solarDate}',
+        date: date,
+        dateText: '${date.month}月${date.day}日',
+        color: AppColors.birthday,
+      ));
+    }
+
+    for (final anniversary in _anniversaries) {
+      final date = anniversary.nextAnniversaryFrom(start);
+      items.add(UpcomingImportantDate(
+        type: ImportantDateType.anniversary,
+        id: anniversary.id,
+        title: anniversary.name,
+        subtitle:
+            '第${anniversary.yearsFrom(start)}年 · 阳历 ${anniversary.solarDate}',
+        date: date,
+        dateText: '${date.month}月${date.day}日',
+        color: const Color(0xFF8B6BAE),
+      ));
+    }
+
+    items.sort((a, b) {
+      final aPast = a.date.isBefore(start);
+      final bPast = b.date.isBefore(start);
+      if (aPast != bPast) return aPast ? 1 : -1;
+      return aPast ? b.date.compareTo(a.date) : a.date.compareTo(b.date);
+    });
     return items;
   }
 

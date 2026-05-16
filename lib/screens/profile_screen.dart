@@ -12,7 +12,7 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  // 椤甸潰璁剧疆鐘舵€侊細涓婚鍜屼釜浜哄熀鏈俊鎭€?
+  // 页面设置状态：主题和个人基础信息。
   String _avatar = '🌷';
   String _nickname = '岁岁';
   DateTime _birthday = DateTime(1998, 4, 26);
@@ -665,7 +665,7 @@ class _SLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 璁剧疆椤靛垎缁勫皬鏍囬銆?
+    // 设置页分组小标题。
     return Padding(
       padding: const EdgeInsets.only(bottom: 6, left: 2),
       child: Text(text,
@@ -680,7 +680,7 @@ class _Card extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 涓汉椤电粺涓€鍗＄墖瀹瑰櫒锛屽瓙椤逛箣闂撮€氳繃 Divider 鎴栧簳閮ㄥ垎鍓茬嚎鍒嗛殧銆?
+    // 个人页统一卡片容器，子项之间通过分割线或底部分割线分隔。
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -712,7 +712,7 @@ class _NavRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 鏅€氳缃鑸锛岀敤浜庤繕鏈睍寮€鐨勪簩绾ц缃叆鍙ｃ€?
+    // 普通设置导航行，用于尚未展开的二级设置入口。
     final theme = AppThemeController.palette;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),

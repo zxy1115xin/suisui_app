@@ -85,6 +85,11 @@ class HealthStore {
     return result;
   }
 
+  static FitnessRecordData? fitnessRecordForDate(DateTime date) {
+    final normalized = healthDateOnly(date);
+    return fitnessRecords.value[_dateKey(normalized)];
+  }
+
   static int fitnessDaysInYear(int year) {
     return fitnessRecords.value.values
         .where((record) => record.date.year == year)

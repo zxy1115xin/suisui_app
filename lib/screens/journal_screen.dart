@@ -16,7 +16,7 @@ const _todoAccentLight = AppColors.brandLight;
 const _eventRed = Color(0xFFD76F72);
 const _eventRedLight = Color(0xFFF8DCDD);
 
-// ─── Screen ───────────────────────────────────────────────────────────
+// 页面主体。
 class JournalScreen extends StatefulWidget {
   const JournalScreen({super.key});
 
@@ -361,7 +361,7 @@ class _JournalScreenState extends State<JournalScreen>
   }
 }
 
-// ─── Section Header ────────────────────────────────────────────────────
+// 分区标题。
 class _SectionHeader extends StatelessWidget {
   final String title;
   final Color actionColor;
@@ -399,7 +399,7 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-// ─── Section Card ──────────────────────────────────────────────────────
+// 分区卡片。
 class _SectionCard extends StatelessWidget {
   final Widget child;
   const _SectionCard({required this.child});
@@ -464,7 +464,7 @@ class _LimitedList extends StatelessWidget {
   }
 }
 
-// ─── Todo Item ─────────────────────────────────────────────────────────
+// 待办项。
 class _TodoItem extends StatelessWidget {
   final int index;
   final TodoItem item;
@@ -531,7 +531,7 @@ class _TodoItem extends StatelessWidget {
   }
 }
 
-// ─── Event Item ────────────────────────────────────────────────────────
+// 重要事件项。
 class _EventItem extends StatelessWidget {
   final ImportantEvent ev;
   final bool past;
@@ -606,7 +606,7 @@ class _EventItem extends StatelessWidget {
   }
 }
 
-// ─── Birthday Item ─────────────────────────────────────────────────────
+// 生日项。
 class _BirthdayItem extends StatelessWidget {
   final BirthdayDate b;
   final DateTime today;
@@ -728,7 +728,7 @@ class _BirthdayItem extends StatelessWidget {
   }
 }
 
-// ─── Anniversary Item ──────────────────────────────────────────────────
+// 纪念日项。
 class _AnniversaryItem extends StatelessWidget {
   final AnniversaryDate a;
   final DateTime today;
@@ -850,7 +850,7 @@ class _AnniversaryItem extends StatelessWidget {
   }
 }
 
-// ─── Sheets ────────────────────────────────────────────────────────────
+// 弹窗面板。
 class _SimpleTextSheet extends StatelessWidget {
   final String title;
   final String hint;

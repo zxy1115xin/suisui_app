@@ -1,60 +1,55 @@
 name: suisui_app
 description: "A new Flutter project."
-# The following line prevents the package from being accidentally published to
-# pub.dev using `flutter pub publish`. This is preferred for private packages.
-publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+# 下方这一行可防止该包被误发布到 pub.dev，
+# 因此更适合私有包使用。
+publish_to: 'none' # 如果希望发布到 pub.dev，请删除这一行
 
-# The following defines the version and build number for your application.
-# A version number is three numbers separated by dots, like 1.2.43
-# followed by an optional build number separated by a +.
-# Both the version and the builder number may be overridden in flutter
-# build by specifying --build-name and --build-number, respectively.
-# In Android, build-name is used as versionName while build-number used as versionCode.
-# Read more about Android versioning at https://developer.android.com/studio/publish/versioning
-# In iOS, build-name is used as CFBundleShortVersionString while build-number is used as CFBundleVersion.
-# Read more about iOS versioning at
+# 下方定义应用的版本号和构建号。
+# 版本号通常由三个用点分隔的数字组成，例如 1.2.43，
+# 后面还可以附加一个用 + 分隔的构建号。
+# 在 Flutter 构建时，可以分别使用 --build-name 和 --build-number 覆盖这两个值。
+# 在 Android 中，build-name 会作为 versionName，build-number 会作为 versionCode。
+# Android 版本说明：https://developer.android.com/studio/publish/versioning
+# 在 iOS 中，build-name 会作为 CFBundleShortVersionString，build-number 会作为 CFBundleVersion。
+# iOS 版本说明：
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
-# In Windows, build-name is used as the major, minor, and patch parts
-# of the product and file versions while build-number is used as the build suffix.
+# 在 Windows 中，build-name 会作为产品和文件版本的主版本、次版本和补丁部分，
+# build-number 会作为构建后缀。
 version: 1.0.0+1
 
 environment:
   sdk: ^3.5.0
 
-# Dependencies specify other packages that your package needs in order to work.
-# To automatically upgrade your package dependencies to the latest versions
-# consider running `flutter pub upgrade --major-versions`. Alternatively,
-# dependencies can be manually updated by changing the version numbers below to
-# the latest version available on pub.dev. To see which dependencies have newer
-# versions available, run `flutter pub outdated`.
+# 依赖项部分用于声明本包运行所需的其他包。
+# 如果想自动将依赖升级到最新主版本，可以运行 `flutter pub upgrade --major-versions`。
+# 也可以手动修改下面的版本号到 pub.dev 上可用的最新版本。
+# 如需查看哪些依赖有新版本，可运行 `flutter pub outdated`。
 dependencies:
   flutter:
     sdk: flutter
 
-  # The following adds the Cupertino Icons font to your application.
-  # Use with the CupertinoIcons class for iOS style icons.
+  # 下方依赖会把 Cupertino Icons 字体加入应用，
+  # 便于配合 CupertinoIcons 类使用 iOS 风格图标。
   cupertino_icons: ^1.0.8
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
 
-  # The "flutter_lints" package below contains a set of recommended lints to
-  # encourage good coding practices. The lint set provided by the package is
-  # activated in the `analysis_options.yaml` file located at the root of your
-  # package. See that file for information about deactivating specific lint
-  # rules and activating additional ones.
+  # 下方的 "flutter_lints" 包提供一组推荐的 lint，
+  # 用于帮助保持良好的编码习惯。
+  # 该包提供的 lint 集合会在项目根目录的 `analysis_options.yaml` 中启用。
+  # 如需了解如何关闭某些 lint 或启用更多规则，请查看该文件。
   flutter_lints: ^6.0.0
 
-# For information on the generic Dart part of this file, see the
-# following page: https://dart.dev/tools/pub/pubspec
+# 关于此文件中通用 Dart 配置的说明，请参见：
+# https://dart.dev/tools/pub/pubspec
 
-# The following section is specific to Flutter packages.
+# 下方部分是 Flutter 包特有的配置。
 flutter:
 
-  # The following line ensures that the Material Icons font is
-  # included with your application, so that you can use the icons in
-  # the material Icons class.
+  # 下方这一行会确保 Material Icons 字体被包含进应用，
+  # 这样就可以直接使用 material Icons 类中的图标。
   uses-material-design: true
 
   assets:

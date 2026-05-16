@@ -12,9 +12,9 @@ class AppColors {
   static const Color brandLight = Color(0xFFF0D5C8);
   static const Color birthday = Color(0xFFE8965C);
   static const Color birthdayLight = Color(0xFFFAE4CB);
-  static const Color period = Color(0xFFD4688A);
-  static const Color periodLight = Color(0xFFF5C8D8);
-  static const Color periodBg = Color(0x26D4688A);
+  static const Color period = Color(0xFFE08FA9);
+  static const Color periodLight = Color(0xFFF8DEE6);
+  static const Color periodBg = Color(0x20E08FA9);
   static const Color event = Color(0xFF7ABFA0);
   static const Color eventLight = Color(0xFFC8E8DC);
   static const Color border = Color(0xFFEDE0D6);

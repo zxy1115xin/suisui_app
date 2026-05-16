@@ -1,8 +1,9 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+
 import '../app_colors.dart';
 import '../health_store.dart';
 import '../important_date_store.dart';
@@ -11,37 +12,38 @@ import '../weight_store.dart';
 
 // 数据层：农历、事件和节假日相关的静态数据与辅助方法。
 const _lunarNames = [
-  '鍒濅竴',
-  '鍒濅簩',
-  '鍒濅笁',
-  '鍒濆洓',
-  '鍒濅簲',
-  '鍒濆叚',
-  '鍒濅竷',
-  '鍒濆叓',
-  '鍒濅節',
-  '鍒濆崄',
-  '鍗佷竴',
-  '鍗佷簩',
-  '鍗佷笁',
-  '鍗佸洓',
-  '鍗佷簲',
-  '鍗佸叚',
-  '鍗佷竷',
-  '鍗佸叓',
-  '鍗佷節',
-  '浜屽崄',
-  '寤夸竴',
-  '寤夸簩',
-  '寤夸笁',
-  '寤垮洓',
-  '寤夸簲',
-  '寤垮叚',
-  '寤夸竷',
-  '寤垮叓',
-  '寤夸節',
-  '涓夊崄',
+  '初一',
+  '初二',
+  '初三',
+  '初四',
+  '初五',
+  '初六',
+  '初七',
+  '初八',
+  '初九',
+  '初十',
+  '十一',
+  '十二',
+  '十三',
+  '十四',
+  '十五',
+  '十六',
+  '十七',
+  '十八',
+  '十九',
+  '二十',
+  '廿一',
+  '廿二',
+  '廿三',
+  '廿四',
+  '廿五',
+  '廿六',
+  '廿七',
+  '廿八',
+  '廿九',
+  '三十',
 ];
+
 // 农历日期生成器的演示实现：当前版本只按 30 天循环展示，后续接入真实农历库时替换这里即可。
 String _lunar(int day) => _lunarNames[(day + 2) % 30];
 
@@ -51,13 +53,29 @@ class _Ev {
   final String? solarTerm;
   final String? eventName;
   final String? note;
+  final bool eventBand;
+  final bool eventStart;
+  final bool eventEnd;
   final bool period;
+  final bool periodStart;
+  final bool periodEnd;
+  final bool todo;
+  final bool todoStart;
+  final bool todoEnd;
   const _Ev(
       {this.birthday,
       this.solarTerm,
       this.eventName,
       this.note,
-      this.period = false});
+      this.eventBand = false,
+      this.eventStart = false,
+      this.eventEnd = false,
+      this.period = false,
+      this.periodStart = false,
+      this.periodEnd = false,
+      this.todo = false,
+      this.todoStart = false,
+      this.todoEnd = false});
 }
 
 // 节假日信息：rest 表示该日期需要显示“休”标记，并用假日颜色突出。
@@ -81,6 +99,9 @@ const _weightLog = <int, double>{
 
 DateTime _dateOnly(DateTime date) => DateTime(date.year, date.month, date.day);
 
+// 统一使用北京时间（UTC+8）作为日历“当前时间”来源。
+DateTime _beijingNow() => DateTime.now().toUtc().add(const Duration(hours: 8));
+
 Map<int, _Ev> _eventsForMonth(int year, int month) {
   final map = <int, _Ev>{};
 
@@ -89,7 +110,15 @@ Map<int, _Ev> _eventsForMonth(int year, int month) {
     String? birthday,
     String? eventName,
     String? note,
+    bool eventBand = false,
+    bool eventStart = false,
+    bool eventEnd = false,
     bool period = false,
+    bool periodStart = false,
+    bool periodEnd = false,
+    bool todo = false,
+    bool todoStart = false,
+    bool todoEnd = false,
   }) {
     if (date.year != year || date.month != month) return;
     final old = map[date.day];
@@ -97,21 +126,38 @@ Map<int, _Ev> _eventsForMonth(int year, int month) {
       birthday: birthday ?? old?.birthday,
       eventName: _joinLabel(old?.eventName, eventName),
       note: note ?? old?.note,
+      eventBand: eventBand || (old?.eventBand ?? false),
+      eventStart: eventStart || (old?.eventStart ?? false),
+      eventEnd: eventEnd || (old?.eventEnd ?? false),
       period: period || (old?.period ?? false),
+      periodStart: periodStart || (old?.periodStart ?? false),
+      periodEnd: periodEnd || (old?.periodEnd ?? false),
+      todo: todo || (old?.todo ?? false),
+      todoStart: todoStart || (old?.todoStart ?? false),
+      todoEnd: todoEnd || (old?.todoEnd ?? false),
     );
   }
 
   for (final event in ImportantDateStore.events) {
     var day = _dateOnly(event.startDate);
-    while (!day.isAfter(event.endDate)) {
-      merge(day, eventName: event.title, note: event.note);
+    final last = _dateOnly(event.endDate);
+    final spansDays = !DateUtils.isSameDay(event.startDate, event.endDate);
+    while (!day.isAfter(last)) {
+      merge(
+        day,
+        eventName: event.title,
+        note: event.note,
+        eventBand: spansDays,
+        eventStart: DateUtils.isSameDay(day, event.startDate),
+        eventEnd: DateUtils.isSameDay(day, event.endDate),
+      );
       day = day.add(const Duration(days: 1));
     }
   }
 
   for (final birthday in ImportantDateStore.birthdays) {
     merge(DateTime(year, birthday.solarMonth, birthday.solarDay),
-        birthday: '${birthday.name}鐢熸棩');
+        birthday: '${birthday.name}生日');
   }
 
   for (final anniversary in ImportantDateStore.anniversaries) {
@@ -119,10 +165,33 @@ Map<int, _Ev> _eventsForMonth(int year, int month) {
         eventName: anniversary.name);
   }
 
-  for (var day = 1; day <= DateUtils.getDaysInMonth(year, month); day++) {
-    final date = DateTime(year, month, day);
-    if (HealthStore.isPeriodDay(date)) {
-      merge(date, period: true);
+  for (final record in HealthStore.periodRecords.value) {
+    var day = _dateOnly(record.start);
+    final last = _dateOnly(record.end);
+    while (!day.isAfter(last)) {
+      merge(
+        day,
+        period: true,
+        periodStart: DateUtils.isSameDay(day, record.start),
+        periodEnd: DateUtils.isSameDay(day, record.end),
+      );
+      day = day.add(const Duration(days: 1));
+    }
+  }
+
+  for (final todo in TodoStore.items.value) {
+    final parsed = _parseTodoRange(todo.text, year);
+    if (parsed == null) continue;
+    var day = _dateOnly(parsed.start);
+    final last = _dateOnly(parsed.end);
+    while (!day.isAfter(last)) {
+      merge(
+        day,
+        todo: true,
+        todoStart: DateUtils.isSameDay(day, parsed.start),
+        todoEnd: DateUtils.isSameDay(day, parsed.end),
+      );
+      day = day.add(const Duration(days: 1));
     }
   }
 
@@ -133,32 +202,67 @@ String? _joinLabel(String? a, String? b) {
   if (b == null || b.isEmpty) return a;
   if (a == null || a.isEmpty) return b;
   if (a.contains(b)) return a;
-  return '$a 路 $b';
+  return '$a · $b';
+}
+
+class _TodoRange {
+  final DateTime start;
+  final DateTime end;
+  const _TodoRange({required this.start, required this.end});
+}
+
+_TodoRange? _parseTodoRange(String text, int defaultYear) {
+  final value = text.trim();
+  final match = RegExp(
+    r'^(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日\s*[-~到]\s*(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日(?:[：:\s]+.*)?$',
+  ).firstMatch(value);
+  if (match == null) return null;
+
+  int parseOrDefault(String? input, int fallback) =>
+      input == null || input.isEmpty ? fallback : int.parse(input);
+
+  final startYear = parseOrDefault(match.group(1), defaultYear);
+  final startMonth = int.parse(match.group(2)!);
+  final startDay = int.parse(match.group(3)!);
+  final endYearRaw = match.group(4);
+  final endMonth = int.parse(match.group(5)!);
+  final endDay = int.parse(match.group(6)!);
+
+  final start = DateTime(startYear, startMonth, startDay);
+  var endYear = parseOrDefault(endYearRaw, startYear);
+  var end = DateTime(endYear, endMonth, endDay);
+  if (end.isBefore(start) && endYearRaw == null) {
+    endYear = startYear + 1;
+    end = DateTime(endYear, endMonth, endDay);
+  }
+
+  if (end.isBefore(start)) return null;
+  return _TodoRange(start: _dateOnly(start), end: _dateOnly(end));
 }
 
 _Hol? _holidayForDate(DateTime date) => _chinaHolidays2026[_dateOnly(date)];
 
 final Map<DateTime, _Hol> _chinaHolidays2026 = {
   for (final date in _dates(DateTime(2026, 1, 1), DateTime(2026, 1, 3)))
-    date: _Hol(name: date.day == 1 ? '鍏冩棪' : null, rest: true),
-  DateTime(2026, 1, 4): const _Hol(name: '璋冧紤', work: true),
-  DateTime(2026, 2, 14): const _Hol(name: '璋冧紤', work: true),
+    date: _Hol(name: date.day == 1 ? '元旦' : null, rest: true),
+  DateTime(2026, 1, 4): const _Hol(name: '调休', work: true),
+  DateTime(2026, 2, 14): const _Hol(name: '调休', work: true),
   for (final date in _dates(DateTime(2026, 2, 15), DateTime(2026, 2, 23)))
-    date: _Hol(name: date.day == 17 ? '鏄ヨ妭' : null, rest: true),
-  DateTime(2026, 2, 28): const _Hol(name: '璋冧紤', work: true),
+    date: _Hol(name: date.day == 17 ? '春节' : null, rest: true),
+  DateTime(2026, 2, 28): const _Hol(name: '调休', work: true),
   for (final date in _dates(DateTime(2026, 4, 4), DateTime(2026, 4, 6)))
-    date: _Hol(name: date.day == 5 ? '娓呮槑鑺? : null, rest: true),
+    date: _Hol(name: date.day == 5 ? '清明节' : null, rest: true),
   for (final date in _dates(DateTime(2026, 5, 1), DateTime(2026, 5, 5)))
-    date: _Hol(name: date.day == 1 ? '鍔冲姩鑺? : null, rest: true),
-  DateTime(2026, 5, 9): const _Hol(name: '璋冧紤', work: true),
+    date: _Hol(name: date.day == 1 ? '劳动节' : null, rest: true),
+  DateTime(2026, 5, 9): const _Hol(name: '调休', work: true),
   for (final date in _dates(DateTime(2026, 6, 19), DateTime(2026, 6, 21)))
-    date: _Hol(name: date.day == 19 ? '绔崍鑺? : null, rest: true),
+    date: _Hol(name: date.day == 19 ? '端午节' : null, rest: true),
   for (final date in _dates(DateTime(2026, 9, 25), DateTime(2026, 9, 27)))
-    date: _Hol(name: date.day == 25 ? '涓鑺? : null, rest: true),
-  DateTime(2026, 9, 20): const _Hol(name: '璋冧紤', work: true),
+    date: _Hol(name: date.day == 25 ? '中秋节' : null, rest: true),
+  DateTime(2026, 9, 20): const _Hol(name: '调休', work: true),
   for (final date in _dates(DateTime(2026, 10, 1), DateTime(2026, 10, 7)))
-    date: _Hol(name: date.day == 1 ? '鍥藉簡鑺? : null, rest: true),
-  DateTime(2026, 10, 10): const _Hol(name: '璋冧紤', work: true),
+    date: _Hol(name: date.day == 1 ? '国庆节' : null, rest: true),
+  DateTime(2026, 10, 10): const _Hol(name: '调休', work: true),
 };
 
 List<DateTime> _dates(DateTime start, DateTime end) {
@@ -172,11 +276,13 @@ List<DateTime> _dates(DateTime start, DateTime end) {
   return dates;
 }
 
-const _weekLabels = ['鏃?, '涓€', '浜?, '涓?, '鍥?, '浜?, '鍏?];
-const _yearWeekLabels = ['涓€', '浜?, '涓?, '鍥?, '浜?, '鍏?, '鏃?];
+const _weekLabels = ['日', '一', '二', '三', '四', '五', '六'];
+const _yearWeekLabels = ['一', '二', '三', '四', '五', '六', '日'];
+const _collapsedMonthRowHeight = 58.0;
+const _rangeBandHeightFactor = 0.45;
 
 DateTime get _todayDate {
-  final now = DateTime.now();
+  final now = _beijingNow();
   return DateTime(now.year, now.month, now.day);
 }
 
@@ -187,18 +293,18 @@ int get _today => _todayDate.day;
 
 String _monthLabel(int month) {
   const labels = [
-    '涓€鏈?,
-    '浜屾湀',
-    '涓夋湀',
-    '鍥涙湀',
-    '浜旀湀',
-    '鍏湀',
-    '涓冩湀',
-    '鍏湀',
-    '涔濇湀',
-    '鍗佹湀',
-    '鍗佷竴鏈?,
-    '鍗佷簩鏈?
+    '一月',
+    '二月',
+    '三月',
+    '四月',
+    '五月',
+    '六月',
+    '七月',
+    '八月',
+    '九月',
+    '十月',
+    '十一月',
+    '十二月',
   ];
   return labels[month - 1];
 }
@@ -235,7 +341,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   void _scheduleTodayRefresh() {
     _todayTimer?.cancel();
-    final now = DateTime.now();
+    final now = _beijingNow();
     final tomorrow = DateTime(now.year, now.month, now.day + 1);
     _todayTimer =
         Timer(tomorrow.difference(now) + const Duration(seconds: 1), () {
@@ -303,6 +409,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         ImportantDateStore.version,
         HealthStore.periodRecords,
         HealthStore.fitnessRecords,
+        TodoStore.items,
         WeightStore.weights,
       ]),
       builder: (context, _) {
@@ -375,7 +482,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               backgroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16)),
-              title: const Text('閫夋嫨骞存湀',
+              title: const Text('选择年月',
                   style: TextStyle(
                       fontSize: 15,
                       color: AppColors.textPrimary,
@@ -389,7 +496,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       items: List.generate(21, (i) => _todayDate.year - 10 + i)
                           .map((value) => DropdownMenuItem(
                                 value: value,
-                                child: Text('$value骞?),
+                                child: Text('$value年'),
                               ))
                           .toList(),
                       onChanged: (value) {
@@ -406,7 +513,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       items: List.generate(12, (i) => i + 1)
                           .map((value) => DropdownMenuItem(
                                 value: value,
-                                child: Text('$value鏈?),
+                                child: Text('$value月'),
                               ))
                           .toList(),
                       onChanged: (value) {
@@ -420,7 +527,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('鍙栨秷',
+                  child: const Text('取消',
                       style: TextStyle(color: AppColors.textSecondary)),
                 ),
                 TextButton(
@@ -428,7 +535,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     context,
                     DateTime(year, month),
                   ),
-                  child: const Text('纭畾',
+                  child: const Text('确定',
                       style: TextStyle(
                           color: AppColors.brand, fontWeight: FontWeight.w600)),
                 ),
@@ -453,7 +560,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               backgroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16)),
-              title: const Text('閫夋嫨骞翠唤',
+              title: const Text('选择年份',
                   style: TextStyle(
                       fontSize: 15,
                       color: AppColors.textPrimary,
@@ -464,7 +571,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 items: List.generate(31, (i) => _todayDate.year - 15 + i)
                     .map((value) => DropdownMenuItem(
                           value: value,
-                          child: Text('$value骞?),
+                          child: Text('$value年'),
                         ))
                     .toList(),
                 onChanged: (value) {
@@ -475,12 +582,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('鍙栨秷',
+                  child: const Text('取消',
                       style: TextStyle(color: AppColors.textSecondary)),
                 ),
                 TextButton(
                   onPressed: () => Navigator.pop(context, year),
-                  child: const Text('纭畾',
+                  child: const Text('确定',
                       style: TextStyle(
                           color: AppColors.brand, fontWeight: FontWeight.w600)),
                 ),
@@ -510,7 +617,7 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final titleText = view == _View.year
-        ? '${displayDate.year}骞?
+        ? '${displayDate.year}年'
         : _monthLabel(displayDate.month);
     final showSubtitle = view != _View.year;
 
@@ -543,7 +650,7 @@ class _Header extends StatelessWidget {
                   ],
                 ),
                 if (showSubtitle)
-                  Text('${displayDate.year}骞?,
+                  Text('${displayDate.year}年',
                       style: const TextStyle(
                           fontSize: 11, color: AppColors.textSecondary)),
               ],
@@ -551,9 +658,9 @@ class _Header extends StatelessWidget {
           ),
           const Spacer(),
           _SegControl(
-            options: const ['鏈?, '鍛?, '鏃?, '骞?],
-            active: ['鏈?, '鍛?, '鏃?, '骞?][_View.values.indexOf(view)],
-            onTap: (s) => onView(_View.values[['鏈?, '鍛?, '鏃?, '骞?].indexOf(s)]),
+            options: const ['月', '周', '日', '年'],
+            active: ['月', '周', '日', '年'][_View.values.indexOf(view)],
+            onTap: (s) => onView(_View.values[['月', '周', '日', '年'].indexOf(s)]),
           ),
         ],
       ),
@@ -770,8 +877,8 @@ class _MonthViewState extends State<_MonthView> {
   }) {
     final preferredRowHeight = switch (_mode) {
       _MonthCalendarMode.week => 62.0,
-      _MonthCalendarMode.month => 58.0,
-      _MonthCalendarMode.detail => 75.0,
+      _MonthCalendarMode.month => _collapsedMonthRowHeight,
+      _MonthCalendarMode.detail => 80.0,
     };
     final today = _todayDate;
     final events = _eventsForMonth(widget.year, widget.month);
@@ -788,46 +895,146 @@ class _MonthViewState extends State<_MonthView> {
         rowCells.add(const _MonthDay(day: 0, inCurrentMonth: false));
       }
 
-      return Row(
-        children: rowCells
-            .map((cell) => Expanded(
-                  child: cell.day == 0
-                      ? const SizedBox()
-                      : _DayCell(
-                          day: cell.day,
-                          selected: cell.inCurrentMonth &&
-                              cell.day == widget.selected,
-                          today: cell.inCurrentMonth &&
-                              widget.year == today.year &&
-                              widget.month == today.month &&
-                              cell.day == today.day,
-                          ev: cell.inCurrentMonth ? events[cell.day] : null,
-                          hol: cell.inCurrentMonth
-                              ? _holidayForDate(DateTime(
-                                  widget.year,
-                                  widget.month,
-                                  cell.day,
-                                ))
-                              : null,
-                          monthStartDay: monthStartDay,
-                          showLabels: _mode == _MonthCalendarMode.detail &&
-                              rowHeight >= 58,
-                          muted: !cell.inCurrentMonth,
-                          onTap: cell.inCurrentMonth
-                              ? () => widget.onSelect(cell.day)
-                              : null,
-                          onDoubleTap: cell.inCurrentMonth
-                              ? () => widget.onOpenDay(
-                                    DateTime(
-                                      widget.year,
-                                      widget.month,
-                                      cell.day,
-                                    ),
-                                  )
-                              : null,
+      final periodRuns = <_PeriodRun>[];
+      final eventRuns = <_PeriodRun>[];
+      int? runStart;
+      for (var i = 0; i < rowCells.length; i++) {
+        final cell = rowCells[i];
+        final inPeriod = cell.day != 0 &&
+            cell.inCurrentMonth &&
+            (events[cell.day]?.period ?? false);
+        if (inPeriod) {
+          runStart ??= i;
+        } else if (runStart != null) {
+          periodRuns.add(_PeriodRun(startIndex: runStart, endIndex: i - 1));
+          runStart = null;
+        }
+      }
+      if (runStart != null) {
+        periodRuns.add(_PeriodRun(startIndex: runStart, endIndex: 6));
+      }
+
+      runStart = null;
+      for (var i = 0; i < rowCells.length; i++) {
+        final cell = rowCells[i];
+        final inEvent = cell.day != 0 &&
+            cell.inCurrentMonth &&
+            (events[cell.day]?.eventBand ?? false);
+        if (inEvent) {
+          runStart ??= i;
+        } else if (runStart != null) {
+          eventRuns.add(_PeriodRun(startIndex: runStart, endIndex: i - 1));
+          runStart = null;
+        }
+      }
+      if (runStart != null) {
+        eventRuns.add(_PeriodRun(startIndex: runStart, endIndex: 6));
+      }
+
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final cellWidth = constraints.maxWidth / 7;
+          final bandHeight = rowHeight >= 75
+              ? _collapsedMonthRowHeight * _rangeBandHeightFactor
+              : rowHeight * _rangeBandHeightFactor;
+          final bandTop = rowHeight >= 75
+              ? rowHeight * 0.18 + 17.0 - bandHeight / 2
+              : (rowHeight - bandHeight) / 2;
+          final bandUnitWidth = math.min(58.0, cellWidth);
+
+          return Stack(
+            children: [
+              for (final run in eventRuns)
+                Positioned(
+                  left: ((run.startIndex + run.endIndex + 1) * cellWidth -
+                          (run.endIndex - run.startIndex + 1) * bandUnitWidth) /
+                      2,
+                  top: bandTop,
+                  width: (run.endIndex - run.startIndex + 1) * bandUnitWidth,
+                  height: bandHeight,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: AppColors.event.withAlpha(22),
+                      borderRadius: BorderRadius.zero,
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x0F000000),
+                          blurRadius: 6,
+                          offset: Offset(0, 1),
                         ),
-                ))
-            .toList(),
+                      ],
+                    ),
+                  ),
+                ),
+              for (final run in periodRuns)
+                Positioned(
+                  left: ((run.startIndex + run.endIndex + 1) * cellWidth -
+                          (run.endIndex - run.startIndex + 1) * bandUnitWidth) /
+                      2,
+                  top: bandTop,
+                  width: (run.endIndex - run.startIndex + 1) * bandUnitWidth,
+                  height: bandHeight,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: AppColors.periodBg.withAlpha(82),
+                      borderRadius: BorderRadius.zero,
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x0F000000),
+                          blurRadius: 6,
+                          offset: Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              Row(
+                children: rowCells
+                    .map((cell) => Expanded(
+                          child: cell.day == 0
+                              ? const SizedBox()
+                              : _DayCell(
+                                  day: cell.day,
+                                  selected: cell.inCurrentMonth &&
+                                      cell.day == widget.selected,
+                                  today: cell.inCurrentMonth &&
+                                      widget.year == today.year &&
+                                      widget.month == today.month &&
+                                      cell.day == today.day,
+                                  ev: cell.inCurrentMonth
+                                      ? events[cell.day]
+                                      : null,
+                                  hol: cell.inCurrentMonth
+                                      ? _holidayForDate(DateTime(
+                                          widget.year,
+                                          widget.month,
+                                          cell.day,
+                                        ))
+                                      : null,
+                                  monthStartDay: monthStartDay,
+                                  showLabels:
+                                      _mode == _MonthCalendarMode.detail &&
+                                          rowHeight >= 58,
+                                  muted: !cell.inCurrentMonth,
+                                  onTap: cell.inCurrentMonth
+                                      ? () => widget.onSelect(cell.day)
+                                      : null,
+                                  onDoubleTap: cell.inCurrentMonth
+                                      ? () => widget.onOpenDay(
+                                            DateTime(
+                                              widget.year,
+                                              widget.month,
+                                              cell.day,
+                                            ),
+                                          )
+                                      : null,
+                                ),
+                        ))
+                    .toList(),
+              ),
+            ],
+          );
+        },
       );
     }
 
@@ -838,6 +1045,18 @@ class _MonthViewState extends State<_MonthView> {
           child: buildRow(rowIdx),
         );
       }),
+    );
+  }
+
+  Widget _buildExpandedCalendarGrid(List<_MonthDay> cells) {
+    const expandedRowHeight = 80.0;
+    final rowCount = (cells.length / 7).ceil();
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      child: SizedBox(
+        height: expandedRowHeight * rowCount,
+        child: _buildCalendarGrid(cells),
+      ),
     );
   }
 
@@ -879,7 +1098,7 @@ class _MonthViewState extends State<_MonthView> {
                           child: Text(d,
                               style: TextStyle(
                                 fontSize: 11,
-                                color: d == '鏃? || d == '鍏?
+                                color: d == '日' || d == '六'
                                     ? AppColors.holiday
                                     : AppColors.textSecondary,
                               )),
@@ -932,10 +1151,12 @@ class _MonthViewState extends State<_MonthView> {
                       alignment: Alignment.topCenter,
                       child: _mode == _MonthCalendarMode.week
                           ? _buildWeekCalendarStrip()
-                          : _buildCalendarGrid(
-                              cells,
-                              maxHeight: constraints.maxHeight,
-                            ),
+                          : _mode == _MonthCalendarMode.detail
+                              ? _buildExpandedCalendarGrid(cells)
+                              : _buildCalendarGrid(
+                                  cells,
+                                  maxHeight: constraints.maxHeight,
+                                ),
                     );
                   },
                 ),
@@ -961,7 +1182,19 @@ class _MonthDay {
   const _MonthDay({required this.day, required this.inCurrentMonth});
 }
 
+class _PeriodRun {
+  final int startIndex;
+  final int endIndex;
+  const _PeriodRun({required this.startIndex, required this.endIndex});
+}
+
 // 日期单元格。
+class _DayLabel {
+  final String text;
+  final Color color;
+  const _DayLabel(this.text, this.color);
+}
+
 class _DayCell extends StatelessWidget {
   final int day;
   final bool selected;
@@ -990,17 +1223,11 @@ class _DayCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // 单个日期格会根据今天、选中状态、节假日、生理期和事件组合决定颜色与角标。
-    final inPeriod = ev?.period == true;
+    final isPeriodStart = ev?.periodStart == true;
+    final isPeriodEnd = ev?.periodEnd == true;
     final isWeekend = ((day + monthStartDay - 1) % 7 == 0);
     final lunarStr = ev?.solarTerm ?? _lunar(day);
-    final label = hol?.name ?? ev?.eventName ?? ev?.birthday;
-    final labelColor = hol?.name != null
-        ? AppColors.holiday
-        : ev?.birthday != null
-            ? AppColors.birthday
-            : ev?.eventName != null
-                ? AppColors.event
-                : null;
+    final labels = _labels.take(3).toList();
     final dateColor = today
         ? Colors.white
         : muted
@@ -1020,98 +1247,155 @@ class _DayCell extends StatelessWidget {
       onTap: onTap,
       onDoubleTap: onDoubleTap,
       child: Container(
-        color: inPeriod ? AppColors.periodBg : Colors.transparent,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+        decoration: BoxDecoration(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.horizontal(
+            left: isPeriodStart ? const Radius.circular(12) : Radius.zero,
+            right: isPeriodEnd ? const Radius.circular(12) : Radius.zero,
+          ),
+        ),
+        child: Stack(
+          alignment: Alignment.center,
           children: [
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: today
-                        ? AppColors.brand
-                        : selected
-                            ? AppColors.brandLight
-                            : Colors.transparent,
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text('$day',
-                          style: TextStyle(
-                            fontSize: 15,
-                            height: 1,
-                            color: dateColor,
-                            fontWeight:
-                                today ? FontWeight.bold : FontWeight.normal,
-                          )),
-                      Text(lunarStr,
-                          style: TextStyle(
-                            fontSize: 11,
-                            height: 1,
-                            color: lunarColor,
-                          )),
-                    ],
-                  ),
-                ),
-                if (hol?.rest == true || hol?.work == true)
-                  Positioned(
-                    top: -2,
-                    right: -10,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 3),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFDECEA),
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                      child: Text(hol?.work == true ? '鐝? : '浼?,
-                          style: TextStyle(
+            Align(
+              alignment:
+                  showLabels ? const Alignment(0, -0.48) : Alignment.center,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: today
+                          ? AppColors.brand
+                          : selected
+                              ? AppColors.brandLight
+                              : Colors.transparent,
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text('$day',
+                            style: TextStyle(
+                              fontSize: 15,
+                              height: 1,
+                              color: dateColor,
+                              fontWeight:
+                                  today ? FontWeight.bold : FontWeight.normal,
+                            )),
+                        const SizedBox(height: 2),
+                        Text(lunarStr,
+                            style: TextStyle(
                               fontSize: 11,
-                              color: AppColors.holiday,
-                              height: 1.5)),
+                              height: 1,
+                              color: lunarColor,
+                            )),
+                      ],
                     ),
                   ),
-              ],
-            ),
-            SizedBox(height: showLabels ? 6 : 2),
-            if (showLabels && label != null)
-              Container(
-                constraints: const BoxConstraints(maxWidth: 58),
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                decoration: BoxDecoration(
-                  color: (labelColor ?? AppColors.brand).withAlpha(36),
-                  borderRadius: BorderRadius.circular(5),
-                ),
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 11,
-                    height: 1.2,
-                    color: labelColor,
-                  ),
-                ),
-              )
-            else
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (ev?.birthday != null) _Dot(color: AppColors.birthday),
-                  if (ev?.eventName != null) _Dot(color: AppColors.event),
-                  if (inPeriod) _Dot(color: AppColors.period),
+                  if (hol?.rest == true || hol?.work == true)
+                    Positioned(
+                      top: -2,
+                      right: -10,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFDECEA),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                        child: Text(hol?.work == true ? '班' : '休',
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: AppColors.holiday,
+                                height: 1.5)),
+                      ),
+                    ),
                 ],
               ),
+            ),
+            Align(
+              alignment: showLabels
+                  ? Alignment.bottomCenter
+                  : const Alignment(0, 0.86),
+              child: showLabels && labels.isNotEmpty
+                  ? SizedBox(
+                      height: 44,
+                      child: ClipRect(
+                        child: Transform.translate(
+                          offset: const Offset(0, 18),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              for (final label in labels)
+                                Container(
+                                  constraints:
+                                      const BoxConstraints(maxWidth: 62),
+                                  margin: const EdgeInsets.only(bottom: 3),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 5, vertical: 0),
+                                  decoration: BoxDecoration(
+                                    color: label.color.withAlpha(30),
+                                    borderRadius: BorderRadius.circular(5),
+                                  ),
+                                  child: Text(
+                                    label.text,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      height: 1.1,
+                                      color: label.color,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (ev?.birthday != null)
+                          _Dot(color: AppColors.birthday),
+                        if (ev?.eventName != null) _Dot(color: AppColors.event),
+                        if (ev?.period == true) _Dot(color: AppColors.period),
+                      ],
+                    ),
+            ),
           ],
         ),
       ),
     );
+  }
+
+  List<_DayLabel> get _labels {
+    final labels = <_DayLabel>[];
+    if (hol?.name != null) {
+      labels.add(_DayLabel(hol!.name!, AppColors.holiday));
+    }
+    if (ev?.birthday != null) {
+      labels.add(_DayLabel(ev!.birthday!, AppColors.birthday));
+    }
+    final eventNames = ev?.eventName
+        ?.split(RegExp(r'\s*(?:·|路)\s*'))
+        .where((value) => value.trim().isNotEmpty);
+    if (eventNames != null) {
+      for (final name in eventNames) {
+        labels.add(_DayLabel(name.trim(), AppColors.event));
+      }
+    }
+    if (ev?.todo == true) {
+      labels.add(const _DayLabel('待办', AppColors.brand));
+    }
+    if (ev?.period == true) {
+      labels.add(const _DayLabel('生理期', AppColors.period));
+    }
+    return labels;
   }
 }
 
@@ -1152,7 +1436,7 @@ class _SelectedDayPlans extends StatelessWidget {
           children: [
             Row(
               children: [
-                Text('$day鏃?,
+                Text('$day日',
                     style: TextStyle(
                       fontSize: 22,
                       height: 1,
@@ -1181,7 +1465,7 @@ class _SelectedDayPlans extends StatelessWidget {
                       children: [
                         Icon(Icons.add, size: 14, color: AppColors.brand),
                         SizedBox(width: 3),
-                        Text('寰呭姙浜嬮」',
+                        Text('待办事项',
                             style: TextStyle(
                               fontSize: 13,
                               color: AppColors.brand,
@@ -1200,7 +1484,7 @@ class _SelectedDayPlans extends StatelessWidget {
                 if (todos.isEmpty) {
                   return const Padding(
                     padding: EdgeInsets.symmetric(vertical: 12),
-                    child: Text('鏆傛棤寰呭姙',
+                    child: Text('暂无待办',
                         style:
                             TextStyle(fontSize: 13, color: AppColors.border)),
                   );
@@ -1208,7 +1492,12 @@ class _SelectedDayPlans extends StatelessWidget {
                 return Column(
                   children: [
                     for (var i = 0; i < todos.length; i++)
-                      _TodoPlanRow(index: i + 1, todo: todos[i]),
+                      _TodoPlanRow(
+                        index: i + 1,
+                        todo: todos[i],
+                        onEdit: (todo) => _showTodoDialog(context, todo: todo),
+                        onDelete: (todo) => TodoStore.remove(todo.id),
+                      ),
                   ],
                 );
               },
@@ -1219,17 +1508,21 @@ class _SelectedDayPlans extends StatelessWidget {
     );
   }
 
-  Future<void> _showAddTodoDialog(BuildContext context) async {
-    final controller = TextEditingController();
-    final added = await showDialog<bool>(
+  Future<void> _showAddTodoDialog(BuildContext context) =>
+      _showTodoDialog(context);
+
+  Future<void> _showTodoDialog(BuildContext context, {TodoItem? todo}) async {
+    final controller = TextEditingController(text: todo?.text ?? '');
+    final editing = todo != null;
+    final saved = await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
           backgroundColor: Colors.white,
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('娣诲姞寰呭姙浜嬮」',
-              style: TextStyle(
+          title: Text(editing ? '修改待办事项' : '添加待办事项',
+              style: const TextStyle(
                 fontSize: 15,
                 color: AppColors.textPrimary,
                 fontWeight: FontWeight.w600,
@@ -1238,7 +1531,7 @@ class _SelectedDayPlans extends StatelessWidget {
             controller: controller,
             autofocus: true,
             decoration: InputDecoration(
-              hintText: '寰呭姙鍐呭',
+              hintText: '待办内容，例如：5月1日-5月3日 出差',
               hintStyle:
                   const TextStyle(fontSize: 13, color: AppColors.textSecondary),
               filled: true,
@@ -1265,13 +1558,13 @@ class _SelectedDayPlans extends StatelessWidget {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('鍙栨秷',
+              child: const Text('取消',
                   style: TextStyle(color: AppColors.textSecondary)),
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('娣诲姞',
-                  style: TextStyle(
+              child: Text(editing ? '保存' : '添加',
+                  style: const TextStyle(
                     color: AppColors.brand,
                     fontWeight: FontWeight.w600,
                   )),
@@ -1280,8 +1573,12 @@ class _SelectedDayPlans extends StatelessWidget {
         );
       },
     );
-    if (added == true) {
-      TodoStore.add(controller.text);
+    if (saved == true) {
+      if (editing) {
+        TodoStore.update(todo.id, controller.text);
+      } else {
+        TodoStore.add(controller.text);
+      }
     }
     controller.dispose();
   }
@@ -1290,7 +1587,14 @@ class _SelectedDayPlans extends StatelessWidget {
 class _TodoPlanRow extends StatelessWidget {
   final int index;
   final TodoItem todo;
-  const _TodoPlanRow({required this.index, required this.todo});
+  final ValueChanged<TodoItem>? onEdit;
+  final ValueChanged<TodoItem>? onDelete;
+  const _TodoPlanRow({
+    required this.index,
+    required this.todo,
+    this.onEdit,
+    this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1332,8 +1636,22 @@ class _TodoPlanRow extends StatelessWidget {
                 )),
           ),
           const SizedBox(width: 10),
+          Tooltip(
+            message: '修改',
+            child: GestureDetector(
+              onTap: () => onEdit?.call(todo),
+              child: const SizedBox(
+                width: 28,
+                height: 28,
+                child: Center(
+                  child: Icon(Icons.edit_outlined,
+                      size: 16, color: AppColors.textSecondary),
+                ),
+              ),
+            ),
+          ),
           GestureDetector(
-            onTap: () => TodoStore.remove(todo.id),
+            onTap: () => onDelete?.call(todo),
             child: const SizedBox(
               width: 28,
               height: 28,
@@ -1363,10 +1681,19 @@ class _CalendarInfoPanels extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
         child: Column(
           children: [
-            _TodoInfoCard(onAdd: () => _showAddTodoDialog(context)),
+            _TodoInfoCard(
+              onAdd: () => _showAddTodoDialog(context),
+              onEdit: (todo) => _showTodoDialog(context, todo: todo),
+              onDelete: (todo) => TodoStore.remove(todo.id),
+            ),
             const SizedBox(height: 12),
             _UpcomingInfoCard(
               onAdd: () => _showImportantDateDialog(context, selectedDate),
+              onEdit: (item) => _showImportantDateDialog(
+                context,
+                selectedDate,
+                item: item,
+              ),
               onDelete: (item) => _confirmRemoveImportantDate(context, item),
             ),
           ],
@@ -1376,16 +1703,21 @@ class _CalendarInfoPanels extends StatelessWidget {
   }
 
   Future<void> _showAddTodoDialog(BuildContext context) async {
-    final controller = TextEditingController();
-    final added = await showDialog<bool>(
+    await _showTodoDialog(context);
+  }
+
+  Future<void> _showTodoDialog(BuildContext context, {TodoItem? todo}) async {
+    final controller = TextEditingController(text: todo?.text ?? '');
+    final editing = todo != null;
+    final saved = await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
           backgroundColor: Colors.white,
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('娣诲姞寰呭姙浜嬮」',
-              style: TextStyle(
+          title: Text(editing ? '修改待办事项' : '添加待办事项',
+              style: const TextStyle(
                 fontSize: 15,
                 color: AppColors.textPrimary,
                 fontWeight: FontWeight.w600,
@@ -1394,7 +1726,7 @@ class _CalendarInfoPanels extends StatelessWidget {
             controller: controller,
             autofocus: true,
             decoration: InputDecoration(
-              hintText: '寰呭姙鍐呭',
+              hintText: '待办内容，例如：5月1日-5月3日 出差',
               hintStyle:
                   const TextStyle(fontSize: 13, color: AppColors.textSecondary),
               filled: true,
@@ -1421,13 +1753,13 @@ class _CalendarInfoPanels extends StatelessWidget {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('鍙栨秷',
+              child: const Text('取消',
                   style: TextStyle(color: AppColors.textSecondary)),
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('娣诲姞',
-                  style: TextStyle(
+              child: Text(editing ? '保存' : '添加',
+                  style: const TextStyle(
                     color: AppColors.brand,
                     fontWeight: FontWeight.w600,
                   )),
@@ -1436,19 +1768,25 @@ class _CalendarInfoPanels extends StatelessWidget {
         );
       },
     );
-    if (added == true) {
-      TodoStore.add(controller.text);
+    if (saved == true) {
+      if (editing) {
+        TodoStore.update(todo.id, controller.text);
+      } else {
+        TodoStore.add(controller.text);
+      }
     }
     controller.dispose();
   }
 
   Future<void> _showImportantDateDialog(
-    BuildContext context,
-    DateTime selectedDate,
-  ) async {
+      BuildContext context, DateTime selectedDate,
+      {UpcomingImportantDate? item}) async {
     await showDialog<void>(
       context: context,
-      builder: (_) => _ImportantDateDialog(initialDate: selectedDate),
+      builder: (_) => _ImportantDateDialog(
+        initialDate: selectedDate,
+        item: item,
+      ),
     );
   }
 
@@ -1463,24 +1801,24 @@ class _CalendarInfoPanels extends StatelessWidget {
           backgroundColor: Colors.white,
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('鍒犻櫎杩戞湡鏃堕棿',
+          title: const Text('删除近期时间',
               style: TextStyle(
                 fontSize: 15,
                 color: AppColors.textPrimary,
                 fontWeight: FontWeight.w600,
               )),
-          content: Text('纭畾鍒犻櫎銆?{item.title}銆嶅悧锛熻褰曢〉涓殑瀵瑰簲淇℃伅涔熶細鍚屾绉婚櫎銆?,
+          content: Text('确定删除“${item.title}”吗？记录页中的对应信息也会同步移除。',
               style: const TextStyle(
                   fontSize: 13, height: 1.45, color: AppColors.textSecondary)),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('鍙栨秷',
+              child: const Text('取消',
                   style: TextStyle(color: AppColors.textSecondary)),
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('鍒犻櫎',
+              child: const Text('删除',
                   style: TextStyle(
                       color: AppColors.holiday, fontWeight: FontWeight.w600)),
             ),
@@ -1496,12 +1834,18 @@ class _CalendarInfoPanels extends StatelessWidget {
 
 class _TodoInfoCard extends StatelessWidget {
   final VoidCallback onAdd;
-  const _TodoInfoCard({required this.onAdd});
+  final ValueChanged<TodoItem> onEdit;
+  final ValueChanged<TodoItem> onDelete;
+  const _TodoInfoCard({
+    required this.onAdd,
+    required this.onEdit,
+    required this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
     return _InfoPanel(
-      title: '寰呭姙浜嬮」',
+      title: '待办事项',
       action: GestureDetector(
         onTap: onAdd,
         child: const Icon(Icons.add_circle_outline,
@@ -1511,15 +1855,19 @@ class _TodoInfoCard extends StatelessWidget {
         valueListenable: TodoStore.items,
         builder: (context, todos, _) {
           if (todos.isEmpty) {
-            return const Text('鏆傛棤寰呭姙',
+            return const Text('暂无待办',
                 style: TextStyle(
                     fontSize: 15, height: 1.2, color: AppColors.border));
           }
-          final visible = todos.take(3).toList();
           return Column(
             children: [
-              for (var i = 0; i < visible.length; i++)
-                _TodoPlanRow(index: i + 1, todo: visible[i]),
+              for (var i = 0; i < todos.length; i++)
+                _TodoPlanRow(
+                  index: i + 1,
+                  todo: todos[i],
+                  onEdit: onEdit,
+                  onDelete: onDelete,
+                ),
             ],
           );
         },
@@ -1530,16 +1878,18 @@ class _TodoInfoCard extends StatelessWidget {
 
 class _UpcomingInfoCard extends StatelessWidget {
   final VoidCallback onAdd;
+  final ValueChanged<UpcomingImportantDate> onEdit;
   final ValueChanged<UpcomingImportantDate> onDelete;
   const _UpcomingInfoCard({
     required this.onAdd,
+    required this.onEdit,
     required this.onDelete,
   });
 
   @override
   Widget build(BuildContext context) {
     return _InfoPanel(
-      title: '杩戞湡鏃堕棿 路 鏈潵 2 涓湀',
+      title: '近期时间',
       action: GestureDetector(
         onTap: onAdd,
         child: const Row(
@@ -1547,7 +1897,7 @@ class _UpcomingInfoCard extends StatelessWidget {
           children: [
             Icon(Icons.add, size: 16, color: AppColors.brand),
             SizedBox(width: 2),
-            Text('娣诲姞',
+            Text('添加',
                 style: TextStyle(
                     fontSize: 13,
                     color: AppColors.brand,
@@ -1559,10 +1909,11 @@ class _UpcomingInfoCard extends StatelessWidget {
         valueListenable: ImportantDateStore.version,
         builder: (context, _, __) {
           final items = ImportantDateStore.upcomingWithinMonths(
-            today: DateTime.now(),
+            today: _todayDate,
+            months: 2,
           );
           if (items.isEmpty) {
-            return const Text('杩戜袱涓湀鏆傛棤閲嶈鏃堕棿',
+            return const Text('暂无重要时间',
                 style: TextStyle(
                     fontSize: 15, height: 1.2, color: AppColors.border));
           }
@@ -1572,6 +1923,7 @@ class _UpcomingInfoCard extends StatelessWidget {
                 _UpcomingImportantRow(
                   item: items[i],
                   last: i == items.length - 1,
+                  onEdit: () => onEdit(items[i]),
                   onDelete: () => onDelete(items[i]),
                 ),
             ],
@@ -1585,10 +1937,12 @@ class _UpcomingInfoCard extends StatelessWidget {
 class _UpcomingImportantRow extends StatelessWidget {
   final UpcomingImportantDate item;
   final bool last;
+  final VoidCallback onEdit;
   final VoidCallback onDelete;
   const _UpcomingImportantRow({
     required this.item,
     required this.last,
+    required this.onEdit,
     required this.onDelete,
   });
 
@@ -1607,10 +1961,12 @@ class _UpcomingImportantRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final days = item.date.difference(_todayDate).inDays;
     final dayText = days == 0
-        ? '浠婂ぉ'
+        ? '今天'
         : days == 1
-            ? '鏄庡ぉ'
-            : '$days 澶╁悗';
+            ? '明天'
+            : days > 1
+                ? '$days 天后'
+                : '已过 ${-days} 天';
     return Container(
       padding: EdgeInsets.only(bottom: last ? 0 : 10, top: last ? 0 : 0),
       margin: EdgeInsets.only(bottom: last ? 0 : 10),
@@ -1645,7 +2001,7 @@ class _UpcomingImportantRow extends StatelessWidget {
                         color: AppColors.textPrimary,
                         fontWeight: FontWeight.w400)),
                 const SizedBox(height: 3),
-                Text('${item.dateText} 路 ${item.subtitle}',
+                Text('${item.dateText} · ${item.subtitle}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -1659,7 +2015,21 @@ class _UpcomingImportantRow extends StatelessWidget {
           Text(dayText,
               style: TextStyle(fontSize: 15, height: 1.2, color: item.color)),
           Tooltip(
-            message: '鍒犻櫎',
+            message: '修改',
+            child: GestureDetector(
+              onTap: onEdit,
+              child: const SizedBox(
+                width: 34,
+                height: 34,
+                child: Center(
+                  child: Icon(Icons.edit_outlined,
+                      size: 18, color: AppColors.textSecondary),
+                ),
+              ),
+            ),
+          ),
+          Tooltip(
+            message: '删除',
             child: GestureDetector(
               onTap: onDelete,
               child: const SizedBox(
@@ -1680,8 +2050,12 @@ class _UpcomingImportantRow extends StatelessWidget {
 
 class _ImportantDateDialog extends StatefulWidget {
   final DateTime initialDate;
+  final UpcomingImportantDate? item;
 
-  const _ImportantDateDialog({required this.initialDate});
+  const _ImportantDateDialog({
+    required this.initialDate,
+    this.item,
+  });
 
   @override
   State<_ImportantDateDialog> createState() => _ImportantDateDialogState();
@@ -1695,12 +2069,14 @@ class _ImportantDateDialogState extends State<_ImportantDateDialog> {
   late DateTime _endDate;
   bool _eventSpansDays = false;
   String? _error;
+  bool get _editing => widget.item != null;
 
   @override
   void initState() {
     super.initState();
     _startDate = dateOnly(widget.initialDate);
     _endDate = _startDate;
+    _loadEditingItem();
   }
 
   @override
@@ -1721,30 +2097,76 @@ class _ImportantDateDialogState extends State<_ImportantDateDialog> {
     }
   }
 
+  void _loadEditingItem() {
+    final item = widget.item;
+    if (item == null) return;
+    _type = item.type;
+    switch (item.type) {
+      case ImportantDateType.event:
+        for (final event in ImportantDateStore.events) {
+          if (event.id != item.id) continue;
+          _titleCtrl.text = event.title;
+          _noteCtrl.text = event.note;
+          _startDate = event.startDate;
+          _endDate = event.endDate;
+          _eventSpansDays =
+              !DateUtils.isSameDay(event.startDate, event.endDate);
+          return;
+        }
+        break;
+      case ImportantDateType.birthday:
+        for (final birthday in ImportantDateStore.birthdays) {
+          if (birthday.id != item.id) continue;
+          _titleCtrl.text = birthday.name;
+          _startDate = DateTime(
+              birthday.solarYear, birthday.solarMonth, birthday.solarDay);
+          _endDate = _startDate;
+          return;
+        }
+        break;
+      case ImportantDateType.anniversary:
+        for (final anniversary in ImportantDateStore.anniversaries) {
+          if (anniversary.id != item.id) continue;
+          _titleCtrl.text = anniversary.name;
+          _startDate = DateTime(
+            anniversary.solarYear,
+            anniversary.solarMonth,
+            anniversary.solarDay,
+          );
+          _endDate = _startDate;
+          return;
+        }
+        break;
+    }
+    _titleCtrl.text = item.title;
+    _startDate = item.date;
+    _endDate = item.date;
+  }
+
   String get _titleHint {
     switch (_type) {
       case ImportantDateType.event:
-        return '????';
+        return '重要事件名称';
       case ImportantDateType.birthday:
-        return '????';
+        return '姓名';
       case ImportantDateType.anniversary:
-        return '?????';
+        return '纪念日名称';
     }
   }
 
   String _typeText(ImportantDateType type) {
     switch (type) {
       case ImportantDateType.event:
-        return '????';
+        return '重要事件';
       case ImportantDateType.birthday:
-        return '??';
+        return '生日';
       case ImportantDateType.anniversary:
-        return '???';
+        return '纪念日';
     }
   }
 
   String _formatDate(DateTime date) =>
-      '${date.year}?${date.month}?${date.day}?';
+      '${date.year}年${date.month}月${date.day}日';
 
   Future<void> _pickDate({
     required DateTime initial,
@@ -1776,13 +2198,16 @@ class _ImportantDateDialogState extends State<_ImportantDateDialog> {
   void _save() {
     final title = _titleCtrl.text.trim();
     if (title.isEmpty) {
-      setState(() => _error = '?????');
+      setState(() => _error = '请输入名称');
       return;
     }
 
     switch (_type) {
       case ImportantDateType.event:
         ImportantDateStore.saveEvent(
+          id: widget.item?.type == ImportantDateType.event
+              ? widget.item?.id
+              : null,
           title: title,
           startDate: _startDate,
           endDate: _eventSpansDays ? _endDate : _startDate,
@@ -1790,10 +2215,22 @@ class _ImportantDateDialogState extends State<_ImportantDateDialog> {
         );
         break;
       case ImportantDateType.birthday:
-        ImportantDateStore.saveBirthday(name: title, solar: _startDate);
+        ImportantDateStore.saveBirthday(
+          id: widget.item?.type == ImportantDateType.birthday
+              ? widget.item?.id
+              : null,
+          name: title,
+          solar: _startDate,
+        );
         break;
       case ImportantDateType.anniversary:
-        ImportantDateStore.saveAnniversary(name: title, solar: _startDate);
+        ImportantDateStore.saveAnniversary(
+          id: widget.item?.type == ImportantDateType.anniversary
+              ? widget.item?.id
+              : null,
+          name: title,
+          solar: _startDate,
+        );
         break;
     }
     Navigator.pop(context);
@@ -1819,8 +2256,8 @@ class _ImportantDateDialogState extends State<_ImportantDateDialog> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text('??????',
-                    style: TextStyle(
+                Text(_editing ? '修改近期时间' : '添加近期时间',
+                    style: const TextStyle(
                         fontSize: 15,
                         color: AppColors.textPrimary,
                         fontWeight: FontWeight.w600)),
@@ -1830,17 +2267,16 @@ class _ImportantDateDialogState extends State<_ImportantDateDialog> {
                     final selected = type == _type;
                     return Expanded(
                       child: GestureDetector(
-                        onTap: () => setState(() {
-                          _type = type;
-                          _error = null;
-                          if (_type != ImportantDateType.event) {
-                            _eventSpansDays = false;
-                            if (_startDate.isAfter(_todayDate)) {
-                              _startDate = _todayDate;
-                            }
-                            _endDate = _startDate;
-                          }
-                        }),
+                        onTap: _editing
+                            ? null
+                            : () => setState(() {
+                                  _type = type;
+                                  _error = null;
+                                  if (_type != ImportantDateType.event) {
+                                    _eventSpansDays = false;
+                                    _endDate = _startDate;
+                                  }
+                                }),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 140),
                           margin: const EdgeInsets.symmetric(horizontal: 3),
@@ -1876,12 +2312,12 @@ class _ImportantDateDialogState extends State<_ImportantDateDialog> {
                 ),
                 const SizedBox(height: 10),
                 _ImportantDatePickerField(
-                  label: isEvent ? '????' : '??',
+                  label: isEvent ? '事件日期' : '日期',
                   text: _formatDate(_startDate),
                   color: _color,
                   onTap: () => _pickDate(
                     initial: _startDate,
-                    allowFuture: isEvent,
+                    allowFuture: true,
                     onPicked: (date) => setState(() {
                       _startDate = date;
                       if (!_eventSpansDays || _endDate.isBefore(_startDate)) {
@@ -1905,7 +2341,7 @@ class _ImportantDateDialogState extends State<_ImportantDateDialog> {
                   if (_eventSpansDays) ...[
                     const SizedBox(height: 10),
                     _ImportantDatePickerField(
-                      label: '????',
+                      label: '结束日期',
                       text: _formatDate(_endDate),
                       color: _color,
                       onTap: () => _pickDate(
@@ -1920,7 +2356,7 @@ class _ImportantDateDialogState extends State<_ImportantDateDialog> {
                   const SizedBox(height: 10),
                   _ImportantDateTextField(
                     controller: _noteCtrl,
-                    hint: '??????',
+                    hint: '备注（可选）',
                     color: _color,
                   ),
                 ],
@@ -1941,7 +2377,7 @@ class _ImportantDateDialogState extends State<_ImportantDateDialog> {
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
                   ),
-                  child: const Text('??'),
+                  child: Text(_editing ? '保存' : '添加'),
                 ),
               ],
             ),
@@ -2079,8 +2515,8 @@ class _EventSpanSelector extends StatelessWidget {
       ),
       child: Row(
         children: [
-          option('??', false),
-          option('????', true),
+          option('单日', false),
+          option('连续多日', true),
         ],
       ),
     );
@@ -2276,42 +2712,42 @@ class _WeekView extends StatelessWidget {
 
 String _lunarDateText(DateTime date) {
   const lunarMonths = [
-    '姝ｆ湀',
-    '浜屾湀',
-    '涓夋湀',
-    '鍥涙湀',
-    '浜旀湀',
-    '鍏湀',
-    '涓冩湀',
-    '鍏湀',
-    '涔濇湀',
-    '鍗佹湀',
-    '鍐湀',
-    '鑵婃湀',
+    '正月',
+    '二月',
+    '三月',
+    '四月',
+    '五月',
+    '六月',
+    '七月',
+    '八月',
+    '九月',
+    '十月',
+    '冬月',
+    '腊月',
   ];
   final lunarMonth = lunarMonths[(date.month - 1).clamp(0, 11).toInt()];
-  return '鍐滃巻$lunarMonth${_lunar(date.day)}';
+  return '农历$lunarMonth${_lunar(date.day)}';
 }
 
 String _seasonStemText(DateTime date, _Ev? ev) {
   final term = ev?.solarTerm ?? _seasonNameForMonth(date.month);
   final termStart = switch (term) {
-    '澶忚嚦' => DateTime(date.year, date.month, 24),
-    '鏄ュ垎' => DateTime(date.year, date.month, 20),
-    '绉嬪垎' => DateTime(date.year, date.month, 23),
-    '鍐嚦' => DateTime(date.year, date.month, 22),
+    '夏至' => DateTime(date.year, date.month, 24),
+    '春分' => DateTime(date.year, date.month, 20),
+    '秋分' => DateTime(date.year, date.month, 23),
+    '冬至' => DateTime(date.year, date.month, 22),
     _ => DateTime(date.year, date.month, 4),
   };
   final termDay = (date.difference(termStart).inDays + 1).clamp(1, 15).toInt();
-  return '$term 路 绗?termDay 鏃? |   鐢插瓙鏃?路 鏈?;
+  return '$term · 第$termDay 日 | 甲子日 · 朔望';
 }
 
 String _seasonNameForMonth(int month) {
-  if (month == 3 || month == 4) return '鏄ュ垎';
-  if (month == 5 || month == 6) return '澶忚嚦';
-  if (month >= 7 && month <= 9) return '绉嬪垎';
-  if (month >= 10 && month <= 12) return '鍐嚦';
-  return '绔嬫槬';
+  if (month == 3 || month == 4) return '春分';
+  if (month == 5 || month == 6) return '夏至';
+  if (month >= 7 && month <= 9) return '秋分';
+  if (month >= 10 && month <= 12) return '冬至';
+  return '立春';
 }
 
 class _DayView extends StatelessWidget {
@@ -2332,7 +2768,7 @@ class _DayView extends StatelessWidget {
     final date = DateTime(year, month, selected);
     final lunarStr = _lunarDateText(date);
     final dayOfWeek = date.weekday % 7;
-    const weekNames = ['鏄熸湡鏃?, '鏄熸湡涓€', '鏄熸湡浜?, '鏄熸湡涓?, '鏄熸湡鍥?, '鏄熸湡浜?, '鏄熸湡鍏?];
+    const weekNames = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
     final daysCount = DateUtils.getDaysInMonth(year, month);
 
     return Column(
@@ -2479,7 +2915,7 @@ class _YearView extends StatelessWidget {
     final months = [
       for (var month = 1; month <= 12; month++)
         _MiniMonthData(
-          '$month鏈?,
+          '$month月',
           DateUtils.getDaysInMonth(year, month),
           DateTime(year, month, 1).weekday - 1,
           _yearMonthEvents(year, month),
@@ -2940,11 +3376,11 @@ class _SyncedYearStatsPanel extends StatelessWidget {
         children: [
           Expanded(
             child: _StatCard(
-              icon: '鈿?,
+              icon: '📈',
               value: currentWeight.toStringAsFixed(1),
-              label: '褰撳墠浣撻噸 kg',
+              label: '当前体重 kg',
               color: AppColors.brand,
-              sub: '鍏ㄥ勾鏈€浣?${minWeight.toStringAsFixed(1)} kg',
+              sub: '全年最低 ${minWeight.toStringAsFixed(1)} kg',
             ),
           ),
           const SizedBox(width: 10),
@@ -2956,10 +3392,10 @@ class _SyncedYearStatsPanel extends StatelessWidget {
           Expanded(
             child: _StatCard(
               icon: '馃敟',
-              value: '$fitnessDays澶?,
-              label: '鍋ヨ韩鎵撳崱',
+              value: '$fitnessDays天',
+              label: '健身打卡',
               color: AppColors.event,
-              sub: '鏈勾鐩爣 150澶?,
+              sub: '本年目标 150天',
             ),
           ),
         ],

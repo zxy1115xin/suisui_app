@@ -2,14 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'dart:math' as math;
 import '../app_colors.dart';
+import '../health_store.dart';
 import '../weight_store.dart';
 
-// ─── Data ─────────────────────────────────────────────────────────────
+// 数据区。
 const _fitnessTypes = ['跑步', '瑜伽', '力量', '骑行', '游泳', '走路'];
-// 当前页面使用 2026 年 4 月作为演示月份：4 月 1 日是周三，周日优先时 startDay=3。
-const _calStartDay = 3;
-const _calDays = 30;
-const _todayDay = 26;
 const _healthAccent = Color(0xFFC8765A);
 const _healthAccentLight = Color(0xFFF0D5C8);
 
@@ -51,7 +48,7 @@ DateTime? _parsePeriodDate(String value) {
       .firstMatch(value.trim());
   final short = RegExp(r'^(0?[1-9]|1[0-2])月(0?[1-9]|[12]\d|3[01])日$')
       .firstMatch(value.trim());
-  final year = full == null ? 2026 : int.parse(full.group(1)!);
+  final year = full == null ? DateTime.now().year : int.parse(full.group(1)!);
   final month = int.parse((full ?? short)?.group(full == null ? 1 : 2) ?? '0');
   final day = int.parse((full ?? short)?.group(full == null ? 2 : 3) ?? '0');
   if (month < 1 || month > 12) return null;
@@ -72,7 +69,7 @@ int _periodDaysBetweenDates(String start, String end) {
   return endDate.difference(startDate).inDays + 1;
 }
 
-// ─── Screen ───────────────────────────────────────────────────────────
+// 页面主体。
 class HealthScreen extends StatefulWidget {
   const HealthScreen({super.key});
 
@@ -89,24 +86,29 @@ class _HealthScreenState extends State<HealthScreen> {
   bool get _periodVisible => _showPeriodModule ?? true;
   bool get _weightVisible => _showWeightModule ?? true;
 
-  // 健身打卡记录：key 是日期，value 保存运动类型和分钟数。
-  final Map<int, List<dynamic>> _monthLog = {
-    3: ['跑步', 30],
-    7: ['瑜伽', 45],
-    10: ['力量', 60],
-    14: ['骑行', 90],
-    17: ['跑步', 45],
-    20: ['跑步', 60],
-    21: ['瑜伽', 45],
-    23: ['力量', 80],
-    24: ['跑步', 30],
-  };
   // 控制健身卡片中“打卡面板”和“周/月视图”的展开状态。
   bool _showCheckin = false;
   bool _showMonthView = false;
-  int _checkinDay = _todayDay;
+  DateTime _checkinDate = appToday;
   String _selFitness = '跑步';
   double _hours = 1.0;
+
+  int get _calStartDay =>
+      DateTime(_todayDate.year, _todayDate.month, 1).weekday % 7;
+  int get _calDays =>
+      DateUtils.getDaysInMonth(_todayDate.year, _todayDate.month);
+  int get _todayDay => _todayDate.day;
+  List<DateTime> get _recent7Dates =>
+      List.generate(7, (i) => _todayDate.subtract(Duration(days: 6 - i)));
+
+  Map<int, List<dynamic>> get _monthLog {
+    final records =
+        HealthStore.fitnessLogForMonth(_todayDate.year, _todayDate.month);
+    return {
+      for (final entry in records.entries)
+        entry.key: [entry.value.type, entry.value.minutes],
+    };
+  }
 
   // 本月打卡总天数直接来自记录条数。
   int get _totalDays => _monthLog.length;
@@ -118,33 +120,27 @@ class _HealthScreenState extends State<HealthScreen> {
 
   // 生理期状态：列表、开始/结束日期以及当前正在编辑的字段。
   bool _showPeriodHistory = false;
-  List<_PeriodRecord>? _periodRecords;
+  DateTime get _todayDate {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day);
+  }
 
   List<_PeriodRecord> get _safePeriodRecords {
-    final records = _periodRecords ??= [
-      const _PeriodRecord(
-          id: 4, start: '2026年4月26日', end: '2026年4月30日', days: 5, cycle: 31),
-      const _PeriodRecord(
-          id: 1, start: '2026年3月26日', end: '2026年3月31日', days: 6, cycle: 28),
-      const _PeriodRecord(
-          id: 2, start: '2026年2月26日', end: '2026年3月3日', days: 6, cycle: 28),
-      const _PeriodRecord(
-          id: 3, start: '2026年1月29日', end: '2026年2月4日', days: 7, cycle: 29),
+    final records = [
+      for (final record in HealthStore.periodRecords.value)
+        _PeriodRecord(
+          id: record.id,
+          start: _formatPeriodDate(record.start),
+          end: _formatPeriodDate(record.end),
+          days: record.days,
+          cycle: record.cycle,
+        ),
     ];
-    final hasAprilRecord = records.any((record) {
-      final start = _parsePeriodDate(record.start);
-      return start != null && start.year == 2026 && start.month == 4;
+    records.sort((a, b) {
+      final aDate = _parsePeriodDate(a.start) ?? DateTime(1900);
+      final bDate = _parsePeriodDate(b.start) ?? DateTime(1900);
+      return bDate.compareTo(aDate);
     });
-    if (!hasAprilRecord) {
-      records.insert(
-          0,
-          const _PeriodRecord(
-              id: 4,
-              start: '2026年4月26日',
-              end: '2026年4月30日',
-              days: 5,
-              cycle: 31));
-    }
     return records;
   }
 
@@ -157,7 +153,25 @@ class _HealthScreenState extends State<HealthScreen> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    _checkinDate = _todayDate;
+    HealthStore.periodRecords.addListener(_onPeriodRecordsChanged);
+    HealthStore.fitnessRecords.addListener(_onFitnessRecordsChanged);
+  }
+
+  void _onPeriodRecordsChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _onFitnessRecordsChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
   void dispose() {
+    HealthStore.periodRecords.removeListener(_onPeriodRecordsChanged);
+    HealthStore.fitnessRecords.removeListener(_onFitnessRecordsChanged);
     super.dispose();
   }
 
@@ -311,10 +325,10 @@ class _HealthScreenState extends State<HealthScreen> {
     );
   }
 
-  void _cancelCheckinForDay(int day) {
+  void _cancelCheckinForDate(DateTime date) {
+    HealthStore.removeFitnessRecord(date);
     setState(() {
-      _monthLog.remove(day);
-      if (_checkinDay == day) {
+      if (DateUtils.isSameDay(_checkinDate, date)) {
         _showCheckin = false;
       }
     });
@@ -337,15 +351,15 @@ class _HealthScreenState extends State<HealthScreen> {
     });
   }
 
-  void _openCheckinForDay(int day) {
-    final existingLog = _monthLog[day];
+  void _openCheckinForDate(DateTime date) {
+    final existingLog = HealthStore.fitnessRecordForDate(date);
     setState(() {
-      _checkinDay = day;
+      _checkinDate = DateTime(date.year, date.month, date.day);
       _showCheckin = true;
       _showMonthView = false;
       if (existingLog != null) {
-        _selFitness = existingLog[0] as String;
-        _hours = (existingLog[1] as int) / 60;
+        _selFitness = existingLog.type;
+        _hours = existingLog.minutes / 60;
       } else {
         _selFitness = _fitnessTypes.first;
         _hours = 1.0;
@@ -354,9 +368,10 @@ class _HealthScreenState extends State<HealthScreen> {
   }
 
   // 根据日期推算星期标签，服务于近 7 天打卡条。
-  String _weekLabel(int day) {
+  String _weekLabel(DateTime date) {
     const names = ['日', '一', '二', '三', '四', '五', '六'];
-    return names[(_calStartDay + day - 1) % 7];
+    final weekday = date.weekday % 7;
+    return names[weekday];
   }
 
   int _periodDaysBetween(String start, String end) {
@@ -405,16 +420,15 @@ class _HealthScreenState extends State<HealthScreen> {
     );
   }
 
-  _PeriodWindow? get _currentPeriodWindow =>
-      _periodWindowForMonth(DateTime(2026, 4, _todayDay));
+  _PeriodWindow? get _currentPeriodWindow => _periodWindowForMonth(_todayDate);
 
   _PeriodWindow? get _nextPeriodWindow =>
-      _periodWindowForMonth(DateTime(2026, 5, 1));
+      _periodWindowForMonth(DateTime(_todayDate.year, _todayDate.month + 1, 1));
 
   _PeriodRecord? get _currentPeriodRecord {
     final records = _sortedPeriodRecords.where((record) {
       final start = _parsePeriodDate(record.start);
-      return start != null && start.year == 2026 && start.month == 4;
+      return start != null && _isSameMonth(start, _todayDate);
     }).toList();
     return records.isEmpty ? null : records.first;
   }
@@ -422,7 +436,7 @@ class _HealthScreenState extends State<HealthScreen> {
   String get _periodStatusText {
     final window = _currentPeriodWindow;
     if (window == null) return '暂无生理期预测';
-    final today = DateTime(2026, 4, _todayDay);
+    final today = _todayDate;
     if (today.isBefore(window.start)) {
       return '距离生理期还有 ${window.start.difference(today).inDays} 天';
     }
@@ -440,7 +454,7 @@ class _HealthScreenState extends State<HealthScreen> {
   int get _periodProgressCount {
     final window = _currentPeriodWindow;
     if (window == null) return 0;
-    final today = DateTime(2026, 4, _todayDay);
+    final today = _todayDate;
     if (today.isBefore(window.start)) return 0;
     final days = today.isAfter(window.end)
         ? window.end.difference(window.start).inDays + 1
@@ -470,9 +484,8 @@ class _HealthScreenState extends State<HealthScreen> {
   Future<void> _editCurrentPeriodDate({required bool editingStart}) async {
     final record = _currentPeriodRecord;
     final window = _currentPeriodWindow;
-    final currentStart = _parsePeriodDate(record?.start ?? '') ??
-        window?.start ??
-        DateTime(2026, 4, _todayDay);
+    final currentStart =
+        _parsePeriodDate(record?.start ?? '') ?? window?.start ?? _todayDate;
     final currentEnd = _parsePeriodDate(record?.end ?? '') ??
         window?.end ??
         currentStart.add(const Duration(days: 4));
@@ -534,32 +547,23 @@ class _HealthScreenState extends State<HealthScreen> {
     required String end,
     required int cycle,
   }) {
-    final days = _periodDaysBetween(start, end);
-    final record = _PeriodRecord(
-      id: id ?? DateTime.now().millisecondsSinceEpoch,
-      start: start,
-      end: end,
-      days: days,
+    final startDate = _parsePeriodDate(start);
+    final endDate = _parsePeriodDate(end);
+    if (startDate == null || endDate == null) return;
+
+    HealthStore.savePeriod(
+      id: id,
+      start: startDate,
+      end: endDate,
       cycle: cycle,
     );
-    setState(() {
-      final records = _safePeriodRecords;
-      final index = records.indexWhere((item) => item.id == id);
-      if (index >= 0) {
-        records[index] = record;
-      } else {
-        records.insert(0, record);
-      }
-      records.sort((a, b) {
-        final aDate = _parsePeriodDate(a.start) ?? DateTime(1900);
-        final bDate = _parsePeriodDate(b.start) ?? DateTime(1900);
-        return bDate.compareTo(aDate);
-      });
-    });
+
+    if (mounted) setState(() {});
   }
 
   void _deletePeriodRecord(int id) {
-    setState(() => _safePeriodRecords.removeWhere((item) => item.id == id));
+    HealthStore.removePeriod(id);
+    if (mounted) setState(() {});
   }
 
   Widget _buildMonthGrid() {
@@ -582,13 +586,15 @@ class _HealthScreenState extends State<HealthScreen> {
           child: Row(
             children: rowCells.map((d) {
               if (d == null) return const Expanded(child: SizedBox());
+              final date = DateTime(_todayDate.year, _todayDate.month, d);
               final done = _monthLog.containsKey(d);
               final isToday = d == _todayDay;
-              final isEditing = _showCheckin && d == _checkinDay;
+              final isEditing =
+                  _showCheckin && DateUtils.isSameDay(date, _checkinDate);
               return Expanded(
                 child: GestureDetector(
-                  onTap: () => _openCheckinForDay(d),
-                  onDoubleTap: done ? () => _cancelCheckinForDay(d) : null,
+                  onTap: () => _openCheckinForDate(date),
+                  onDoubleTap: done ? () => _cancelCheckinForDate(date) : null,
                   behavior: HitTestBehavior.opaque,
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -642,7 +648,7 @@ class _HealthScreenState extends State<HealthScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 健康页由三块组成：健身打卡、生理期、体重记录，全部使用本地 Stateful 状态驱动。
+    // 健康页由三块组成：健身打卡、生理期、体重记录，全部使用本地状态驱动。
     return SafeArea(
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
@@ -719,25 +725,26 @@ class _HealthScreenState extends State<HealthScreen> {
                     ),
                     const SizedBox(height: 10),
 
-                    // ── Week strip or Month grid ──
+                    // 周条或月网格。
                     if (!_showMonthView) ...[
                       // 周视图：展示截至今天的近 7 天。
                       Row(
-                        children: List.generate(7, (i) {
-                          final day = (_todayDay - 6 + i).clamp(1, _calDays);
-                          final log = _monthLog[day];
-                          final isToday = day == _todayDay;
+                        children: _recent7Dates.map((date) {
+                          final log = HealthStore.fitnessRecordForDate(date);
+                          final isToday = DateUtils.isSameDay(date, _todayDate);
                           final done = log != null;
-                          final isEditing = _showCheckin && day == _checkinDay;
+                          final isEditing = _showCheckin &&
+                              DateUtils.isSameDay(date, _checkinDate);
                           return Expanded(
                             child: GestureDetector(
-                              onTap: () => _openCheckinForDay(day),
-                              onDoubleTap:
-                                  done ? () => _cancelCheckinForDay(day) : null,
+                              onTap: () => _openCheckinForDate(date),
+                              onDoubleTap: done
+                                  ? () => _cancelCheckinForDate(date)
+                                  : null,
                               behavior: HitTestBehavior.opaque,
                               child: Column(
                                 children: [
-                                  Text(_weekLabel(day),
+                                  Text(_weekLabel(date),
                                       style: const TextStyle(
                                           fontSize: 9,
                                           color: AppColors.textSecondary)),
@@ -763,7 +770,7 @@ class _HealthScreenState extends State<HealthScreen> {
                                       child: done
                                           ? const Icon(Icons.check,
                                               color: Colors.white, size: 14)
-                                          : Text('$day',
+                                          : Text('${date.day}',
                                               style: const TextStyle(
                                                   fontSize: 9,
                                                   color:
@@ -772,12 +779,12 @@ class _HealthScreenState extends State<HealthScreen> {
                                   ),
                                   if (done) ...[
                                     const SizedBox(height: 2),
-                                    Text(log[0] as String,
+                                    Text(log.type,
                                         style: const TextStyle(
                                             fontSize: 8,
                                             color: _healthAccent,
                                             fontWeight: FontWeight.w500)),
-                                    Text(_formatHoursOnly(log[1] as int),
+                                    Text(_formatHoursOnly(log.minutes),
                                         style: const TextStyle(
                                             fontSize: 8,
                                             color: AppColors.textSecondary)),
@@ -786,7 +793,7 @@ class _HealthScreenState extends State<HealthScreen> {
                               ),
                             ),
                           );
-                        }),
+                        }).toList(),
                       ),
                     ] else ...[
                       // 月视图：完整展示当月 30 天打卡情况，可点击切换完成状态。
@@ -812,7 +819,7 @@ class _HealthScreenState extends State<HealthScreen> {
                       const SizedBox(height: 10),
                       const Divider(color: AppColors.border, height: 1),
                       const SizedBox(height: 10),
-                      Text('4月$_checkinDay日运动记录',
+                      Text('${_checkinDate.month}月${_checkinDate.day}日运动记录',
                           style: const TextStyle(
                               fontSize: 11, color: AppColors.textSecondary)),
                       const SizedBox(height: 8),
@@ -879,10 +886,11 @@ class _HealthScreenState extends State<HealthScreen> {
                       const SizedBox(height: 6),
                       GestureDetector(
                         onTap: () => setState(() {
-                          _monthLog[_checkinDay] = [
-                            _selFitness,
-                            (_hours * 60).round()
-                          ];
+                          HealthStore.saveFitnessRecord(
+                            date: _checkinDate,
+                            type: _selFitness,
+                            minutes: (_hours * 60).round(),
+                          );
                           _showCheckin = false;
                         }),
                         child: Container(
@@ -1099,7 +1107,7 @@ class _HealthScreenState extends State<HealthScreen> {
   }
 }
 
-// ─── Period History ────────────────────────────────────────────────────
+// 生理期历史记录。
 class _PeriodHistory extends StatefulWidget {
   final List<_PeriodRecord>? records;
   final void Function({
@@ -1298,17 +1306,18 @@ class _PeriodRecordEditor extends StatefulWidget {
 
 class _PeriodRecordEditorState extends State<_PeriodRecordEditor> {
   late DateTime _startDate;
-  late DateTime _endDate;
   late final TextEditingController _cycleCtrl;
   String? _error;
+
+  DateTime get _endDate => _startDate.add(const Duration(days: 5));
 
   @override
   void initState() {
     super.initState();
     final record = widget.record;
-    _startDate = _parsePeriodDate(record?.start ?? '') ?? DateTime(2026, 4, 22);
-    _endDate = _parsePeriodDate(record?.end ?? '') ??
-        _startDate.add(const Duration(days: 5));
+    final today = DateTime.now();
+    _startDate = _parsePeriodDate(record?.start ?? '') ??
+        DateTime(today.year, today.month, today.day);
     _cycleCtrl = TextEditingController(text: '${record?.cycle ?? 28}');
   }
 
@@ -1320,10 +1329,6 @@ class _PeriodRecordEditorState extends State<_PeriodRecordEditor> {
 
   void _submit() {
     final cycle = int.tryParse(_cycleCtrl.text.trim());
-    if (_endDate.isBefore(_startDate)) {
-      setState(() => _error = '结束时间不能早于开始时间');
-      return;
-    }
     if (cycle == null || cycle < 15 || cycle > 60) {
       setState(() => _error = '周期请填写 15-60 之间的天数');
       return;
@@ -1337,13 +1342,13 @@ class _PeriodRecordEditorState extends State<_PeriodRecordEditor> {
   @override
   Widget build(BuildContext context) {
     final editing = widget.record != null;
-    return Padding(
+    return Container(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(editing ? '修改生理期记录' : '新增生理期记录',
+          Text(editing ? '修改生理期' : '添加生理期',
               style: const TextStyle(
                   fontSize: 15,
                   color: AppColors.textPrimary,
@@ -1357,16 +1362,31 @@ class _PeriodRecordEditorState extends State<_PeriodRecordEditor> {
                   value: _startDate,
                   onChanged: (value) => setState(() {
                     _startDate = value;
-                    _endDate = value.add(const Duration(days: 5));
                   }),
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: _PeriodDateField(
-                  label: '结束',
-                  value: _endDate,
-                  onChanged: (value) => setState(() => _endDate = value),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.bgPage,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('结束',
+                          style: TextStyle(
+                              fontSize: 11, color: AppColors.textSecondary)),
+                      const SizedBox(height: 2),
+                      Text(_formatPeriodDate(_endDate),
+                          style: const TextStyle(
+                              fontSize: 13, color: AppColors.textPrimary)),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -1376,7 +1396,7 @@ class _PeriodRecordEditorState extends State<_PeriodRecordEditor> {
           if (_error != null) ...[
             const SizedBox(height: 6),
             Text(_error!,
-                style: const TextStyle(fontSize: 10, color: AppColors.holiday)),
+                style: const TextStyle(fontSize: 11, color: AppColors.holiday)),
           ],
           const SizedBox(height: 12),
           Row(
@@ -1393,7 +1413,7 @@ class _PeriodRecordEditorState extends State<_PeriodRecordEditor> {
                     child: const Center(
                       child: Text('取消',
                           style: TextStyle(
-                              fontSize: 12, color: AppColors.textSecondary)),
+                              fontSize: 13, color: AppColors.textSecondary)),
                     ),
                   ),
                 ),
@@ -1410,7 +1430,7 @@ class _PeriodRecordEditorState extends State<_PeriodRecordEditor> {
                     ),
                     child: const Center(
                       child: Text('保存',
-                          style: TextStyle(fontSize: 12, color: Colors.white)),
+                          style: TextStyle(fontSize: 13, color: Colors.white)),
                     ),
                   ),
                 ),
@@ -1502,7 +1522,7 @@ class _PeriodDateWheelSheet extends StatefulWidget {
 }
 
 class _PeriodDateWheelSheetState extends State<_PeriodDateWheelSheet> {
-  static const _years = [2020, 2021, 2022, 2023, 2024, 2025, 2026];
+  late final List<int> _years;
   late int _year;
   late int _month;
   late int _day;
@@ -1510,6 +1530,8 @@ class _PeriodDateWheelSheetState extends State<_PeriodDateWheelSheet> {
   @override
   void initState() {
     super.initState();
+    final nowYear = DateTime.now().year;
+    _years = [for (var y = nowYear - 6; y <= nowYear + 2; y++) y];
     _year = widget.initial.year.clamp(_years.first, _years.last).toInt();
     _month = widget.initial.month;
     _day = widget.initial.day;
@@ -1649,7 +1671,7 @@ class _PeriodTextField extends StatelessWidget {
   }
 }
 
-// ─── Weight Card ──────────────────────────────────────────────────────
+// 体重卡片。
 class _WeightPoint {
   final int day;
   final double weight;
@@ -1665,10 +1687,16 @@ class _WeightCard extends StatefulWidget {
 }
 
 class _WeightCardState extends State<_WeightCard> {
-  int _selectedDay = _todayDay;
+  int _selectedDay = 1;
   final _scrollCtrl = ScrollController();
   bool? _didInitialScroll;
   bool? _showWeightMonthView;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedDay = _todayDay;
+  }
 
   @override
   void dispose() {
@@ -1677,6 +1705,8 @@ class _WeightCardState extends State<_WeightCard> {
   }
 
   DateTime get _todayDate => appToday;
+  int get _todayDay => _todayDate.day;
+  DateTime get _currentMonth => DateTime(_todayDate.year, _todayDate.month, 1);
 
   double get _todayWeight => _weightForDate(_todayDate);
   int get _visibleWeightStartDay => math.max(1, _todayDay - 6);
@@ -1688,7 +1718,8 @@ class _WeightCardState extends State<_WeightCard> {
 
   double _weightForDate(DateTime date) => WeightStore.weightForDate(date);
 
-  double _weightForDay(int day) => _weightForDate(DateTime(2026, 4, day));
+  double _weightForDay(int day) =>
+      _weightForDate(DateTime(_currentMonth.year, _currentMonth.month, day));
 
   Future<void> _editWeightDate(DateTime date) async {
     final value = await showGeneralDialog<double>(
@@ -1738,7 +1769,8 @@ class _WeightCardState extends State<_WeightCard> {
     );
     if (value == null) return;
     setState(() {
-      if (date.year == 2026 && date.month == 4) {
+      if (date.year == _currentMonth.year &&
+          date.month == _currentMonth.month) {
         _selectedDay = date.day;
       }
       WeightStore.setWeight(date, value);
@@ -1746,7 +1778,8 @@ class _WeightCardState extends State<_WeightCard> {
   }
 
   Future<void> _editWeight(int day) {
-    return _editWeightDate(DateTime(2026, 4, day));
+    return _editWeightDate(
+        DateTime(_currentMonth.year, _currentMonth.month, day));
   }
 
   List<_WeightPoint> get _chartPoints {
@@ -1754,7 +1787,7 @@ class _WeightCardState extends State<_WeightCard> {
       _todayDay - _visibleWeightStartDay + 1,
       (i) {
         final day = _visibleWeightStartDay + i;
-        final date = DateTime(2026, 4, day);
+        final date = DateTime(_currentMonth.year, _currentMonth.month, day);
         return _WeightPoint(day, _weightForDate(date), date: date);
       },
     );
@@ -1828,7 +1861,7 @@ class _WeightCardState extends State<_WeightCard> {
                         ],
                       ),
                     ),
-                    Text('4月$_todayDay日',
+                    Text('${_todayDate.month}月$_todayDay日',
                         style: const TextStyle(
                             fontSize: 10, color: AppColors.textSecondary)),
                   ],
@@ -2169,7 +2202,7 @@ class _WeightNinetyDayPainter extends CustomPainter {
   }
 }
 
-// ─── Weight Chart Painter ─────────────────────────────────────────────
+// 体重图表绘制器。
 class _WeightChartPainter extends CustomPainter {
   final List<_WeightPoint> points;
   final int selectedDay;
@@ -2251,7 +2284,7 @@ class _WeightChartPainter extends CustomPainter {
   }
 }
 
-// ─── Card wrapper ─────────────────────────────────────────────────────
+// 卡片容器。
 class _Card extends StatelessWidget {
   final Widget child;
   const _Card({required this.child});
