@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../app_colors.dart';
 import '../important_date_store.dart';
 import '../todo_store.dart';
@@ -80,7 +81,7 @@ class _JournalScreenState extends State<JournalScreen>
       context: context,
       barrierDismissible: true,
       barrierLabel: '关闭填写框',
-      barrierColor: Colors.black.withOpacity(0.06),
+      barrierColor: Colors.black.withValues(alpha: 0.06),
       transitionDuration: const Duration(milliseconds: 140),
       pageBuilder: (_, __, ___) => const SizedBox.shrink(),
       transitionBuilder: (dialogContext, animation, _, __) {
@@ -150,6 +151,7 @@ class _JournalScreenState extends State<JournalScreen>
             children: [
               const Text('记录',
                   style: TextStyle(
+                    fontFamily: 'XinDiXiaWuCha',
                     fontSize: 22,
                     color: AppColors.textPrimary,
                   )),
@@ -399,6 +401,14 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
+// 左滑删除时展示的红色背景（所有列表项共用）。
+Widget _dismissBg({Color color = const Color(0xFFD76F72)}) => Container(
+      alignment: Alignment.centerRight,
+      padding: const EdgeInsets.only(right: 18),
+      color: color.withValues(alpha: 0.10),
+      child: Icon(Icons.delete_outline, color: color, size: 20),
+    );
+
 // 分区卡片。
 class _SectionCard extends StatelessWidget {
   final Widget child;
@@ -456,8 +466,7 @@ class _LimitedList extends StatelessWidget {
           ? const BouncingScrollPhysics()
           : const NeverScrollableScrollPhysics(),
       itemCount: itemCount,
-      itemBuilder: (_, index) =>
-          SizedBox(height: itemHeight, child: itemBuilder(index)),
+      itemBuilder: (_, index) => itemBuilder(index),
     );
     if (itemCount <= maxVisible) return list;
     return SizedBox(height: maxVisible * itemHeight, child: list);
@@ -481,50 +490,60 @@ class _TodoItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 待办行：左侧只展示序号，只有右侧删除键会移除待办。
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onDoubleTap: onEdit,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-            border: last
-                ? null
-                : const Border(
-                    bottom: BorderSide(color: AppColors.border, width: 0.5))),
-        child: Row(
-          children: [
-            Container(
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                color: _todoAccentLight,
-                borderRadius: BorderRadius.circular(7),
-              ),
-              child: Center(
-                child: Text('$index',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: _todoAccent,
-                      fontWeight: FontWeight.w600,
-                    )),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                item.text,
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: AppColors.textPrimary,
+    return Dismissible(
+      key: ValueKey(item.id),
+      direction: DismissDirection.endToStart,
+      onDismissed: (_) {
+        HapticFeedback.mediumImpact();
+        onDelete();
+      },
+      background: _dismissBg(color: _todoAccent),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onLongPress: () {
+          HapticFeedback.selectionClick();
+          onEdit();
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+              border: last
+                  ? null
+                  : const Border(
+                      bottom:
+                          BorderSide(color: AppColors.border, width: 0.5))),
+          child: Row(
+            children: [
+              Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: _todoAccentLight,
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: Center(
+                  child: Text('$index',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: _todoAccent,
+                        fontWeight: FontWeight.w600,
+                      )),
                 ),
               ),
-            ),
-            GestureDetector(
-              onTap: onDelete,
-              child: const Icon(Icons.close, size: 16, color: AppColors.border),
-            ),
-          ],
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  item.text,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              const Icon(Icons.chevron_right, size: 15,
+                  color: AppColors.border),
+            ],
+          ),
         ),
       ),
     );
@@ -548,12 +567,22 @@ class _EventItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 重要事件行：已发生事件只降低透明度，仍保留可读文本。
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onDoubleTap: onEdit,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+    return Dismissible(
+      key: ValueKey(ev.id),
+      direction: DismissDirection.endToStart,
+      onDismissed: (_) {
+        HapticFeedback.mediumImpact();
+        onDelete();
+      },
+      background: _dismissBg(color: _eventRed),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onLongPress: () {
+          HapticFeedback.selectionClick();
+          onEdit();
+        },
+        child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
             border: last
                 ? null
@@ -592,16 +621,11 @@ class _EventItem extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: onDelete,
-                child:
-                    const Icon(Icons.close, size: 16, color: AppColors.border),
-              ),
             ],
           ),
         ),
       ),
+    ),
     );
   }
 }
@@ -624,104 +648,99 @@ class _BirthdayItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final days = b.daysUntilBirthdayFrom(today);
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onDoubleTap: onEdit,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-            border: last
-                ? null
-                : const Border(
-                    bottom: BorderSide(color: AppColors.border, width: 0.5))),
-        child: Row(
-          children: [
-            Container(
-              width: 46,
-              height: 42,
-              decoration: BoxDecoration(
-                color: days <= 7 ? AppColors.birthdayLight : AppColors.bgPage,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.birthdayLight),
+    return Dismissible(
+      key: ValueKey(b.id),
+      direction: DismissDirection.endToStart,
+      onDismissed: (_) {
+        HapticFeedback.mediumImpact();
+        onDelete();
+      },
+      background: _dismissBg(color: AppColors.birthday),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onLongPress: () {
+          HapticFeedback.selectionClick();
+          onEdit();
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+              border: last
+                  ? null
+                  : const Border(
+                      bottom:
+                          BorderSide(color: AppColors.border, width: 0.5))),
+          child: Row(
+            children: [
+              Container(
+                width: 46,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: days <= 7 ? AppColors.birthdayLight : AppColors.bgPage,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.birthdayLight),
+                ),
+                child: Center(
+                  child: days == 0
+                      ? const Text('今天',
+                          style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.birthday,
+                              fontWeight: FontWeight.w600))
+                      : Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('$days',
+                                style: const TextStyle(
+                                    fontSize: 15, color: AppColors.birthday)),
+                            const Text('天',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textSecondary)),
+                          ],
+                        ),
+                ),
               ),
-              child: Center(
-                child: days == 0
-                    ? const Text('今天',
-                        style: TextStyle(
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(b.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
                             fontSize: 13,
-                            color: AppColors.birthday,
-                            fontWeight: FontWeight.w600))
-                    : Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text('$days',
-                              style: const TextStyle(
-                                  fontSize: 15, color: AppColors.birthday)),
-                          const Text('天',
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  color: AppColors.textSecondary)),
-                        ],
-                      ),
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.w500)),
+                    Text('阳历 ${b.solarDate} · 阴历 ${b.lunarDate}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 11, color: AppColors.textSecondary)),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(b.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 13,
-                          color: AppColors.textPrimary,
-                          fontWeight: FontWeight.w500)),
-                  Text('阳历 ${b.solarDate} · 阴历 ${b.lunarDate}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 11, color: AppColors.textSecondary)),
-                ],
-              ),
-            ),
-            const SizedBox(width: 10),
-            SizedBox(
-              width: 60,
-              child: Column(
+              const SizedBox(width: 10),
+              Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 mainAxisAlignment: MainAxisAlignment.center,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text('${b.ageFrom(today)}岁',
-                      maxLines: 1,
-                      softWrap: false,
-                      textAlign: TextAlign.right,
                       style: const TextStyle(
                         fontSize: 15,
                         height: 1.1,
                         color: AppColors.birthday,
                       )),
-                  const SizedBox(height: 2),
                   const Text('今年',
-                      maxLines: 1,
                       style: TextStyle(
                           fontSize: 11, color: AppColors.textSecondary)),
                 ],
               ),
-            ),
-            GestureDetector(
-              onTap: onDelete,
-              child: const SizedBox(
-                width: 28,
-                height: 32,
-                child: Center(
-                  child: Icon(Icons.close, size: 16, color: AppColors.border),
-                ),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -745,105 +764,102 @@ class _AnniversaryItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const purple = Color(0xFF8B6BAE);
     final days = a.daysUntilAnniversaryFrom(today);
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onDoubleTap: onEdit,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-            border: last
-                ? null
-                : const Border(
-                    bottom: BorderSide(color: AppColors.border, width: 0.5))),
-        child: Row(
-          children: [
-            Container(
-              width: 46,
-              height: 42,
-              decoration: BoxDecoration(
-                color: days <= 7 ? const Color(0xFFF0E8FA) : AppColors.bgPage,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFD7C4EE)),
+    return Dismissible(
+      key: ValueKey(a.id),
+      direction: DismissDirection.endToStart,
+      onDismissed: (_) {
+        HapticFeedback.mediumImpact();
+        onDelete();
+      },
+      background: _dismissBg(color: purple),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onLongPress: () {
+          HapticFeedback.selectionClick();
+          onEdit();
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+              border: last
+                  ? null
+                  : const Border(
+                      bottom:
+                          BorderSide(color: AppColors.border, width: 0.5))),
+          child: Row(
+            children: [
+              Container(
+                width: 46,
+                height: 42,
+                decoration: BoxDecoration(
+                  color:
+                      days <= 7 ? const Color(0xFFF0E8FA) : AppColors.bgPage,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFD7C4EE)),
+                ),
+                child: Center(
+                  child: days == 0
+                      ? const Text('今天',
+                          style: TextStyle(
+                              fontSize: 13,
+                              color: purple,
+                              fontWeight: FontWeight.w600))
+                      : Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text('$days',
+                                style:
+                                    const TextStyle(fontSize: 15, color: purple)),
+                            const Text('天',
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textSecondary)),
+                          ],
+                        ),
+                ),
               ),
-              child: Center(
-                child: days == 0
-                    ? const Text('今天',
-                        style: TextStyle(
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(a.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
                             fontSize: 13,
-                            color: Color(0xFF8B6BAE),
-                            fontWeight: FontWeight.w600))
-                    : Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text('$days',
-                              style: const TextStyle(
-                                  fontSize: 15, color: Color(0xFF8B6BAE))),
-                          const Text('天',
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  color: AppColors.textSecondary)),
-                        ],
-                      ),
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.w500)),
+                    Text('阴历 ${a.lunarDate} · 阳历 ${a.solarDate}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 11, color: AppColors.textSecondary)),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(a.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 13,
-                          color: AppColors.textPrimary,
-                          fontWeight: FontWeight.w500)),
-                  Text('阴历 ${a.lunarDate} · 阳历 ${a.solarDate}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 11, color: AppColors.textSecondary)),
-                ],
-              ),
-            ),
-            const SizedBox(width: 10),
-            SizedBox(
-              width: 66,
-              child: Column(
+              const SizedBox(width: 10),
+              Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 mainAxisAlignment: MainAxisAlignment.center,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text('第${a.yearsFrom(today)}年',
-                      maxLines: 1,
-                      softWrap: false,
-                      textAlign: TextAlign.right,
                       style: const TextStyle(
                         fontSize: 15,
                         height: 1.1,
-                        color: Color(0xFF8B6BAE),
+                        color: purple,
                       )),
-                  const SizedBox(height: 2),
                   const Text('周年',
-                      maxLines: 1,
                       style: TextStyle(
                           fontSize: 11, color: AppColors.textSecondary)),
                 ],
               ),
-            ),
-            GestureDetector(
-              onTap: onDelete,
-              child: const SizedBox(
-                width: 28,
-                height: 32,
-                child: Center(
-                  child: Icon(Icons.close, size: 16, color: AppColors.border),
-                ),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -1223,7 +1239,7 @@ class _DateWheelField extends StatelessWidget {
           context: context,
           barrierDismissible: true,
           barrierLabel: '关闭日期选择',
-          barrierColor: Colors.black.withOpacity(0.06),
+          barrierColor: Colors.black.withValues(alpha: 0.06),
           transitionDuration: const Duration(milliseconds: 140),
           pageBuilder: (_, __, ___) => const SizedBox.shrink(),
           transitionBuilder: (dialogContext, animation, _, __) {

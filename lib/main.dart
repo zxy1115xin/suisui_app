@@ -3,13 +3,30 @@ import 'package:flutter/services.dart';
 
 import 'app_colors.dart';
 import 'app_theme.dart';
+import 'health_store.dart';
+import 'important_date_store.dart';
+import 'profile_store.dart';
 import 'screens/calendar_screen.dart';
 import 'screens/health_screen.dart';
 import 'screens/journal_screen.dart';
 import 'screens/profile_screen.dart';
+import 'storage_service.dart';
+import 'todo_store.dart';
+import 'weight_store.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await StorageService.init();
+  await Future.wait([
+    AppThemeController.load(),
+    ProfileStore.load(),
+    TodoStore.load(),
+    WeightStore.load(),
+    HealthStore.load(),
+    ImportantDateStore.load(),
+  ]);
+
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.dark,
@@ -79,23 +96,74 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _index = 0;
+  late final PageController _pageCtrl;
 
-  static const _pages = [
-    CalendarScreen(),
-    HealthScreen(),
-    JournalScreen(),
-    ProfileScreen(),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _pageCtrl = PageController();
+  }
+
+  @override
+  void dispose() {
+    _pageCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onTabTap(int i) {
+    if (i == _index) return;
+    HapticFeedback.selectionClick();
+    setState(() => _index = i);
+    _pageCtrl.animateToPage(
+      i,
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeInOutCubic,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(index: _index, children: _pages),
+      body: PageView(
+        controller: _pageCtrl,
+        onPageChanged: (i) {
+          if (i == _index) return;
+          HapticFeedback.selectionClick();
+          setState(() => _index = i);
+        },
+        children: const [
+          _KeepAlivePage(child: CalendarScreen()),
+          _KeepAlivePage(child: HealthScreen()),
+          _KeepAlivePage(child: JournalScreen()),
+          _KeepAlivePage(child: ProfileScreen()),
+        ],
+      ),
       bottomNavigationBar: _BottomNav(
         current: _index,
-        onTap: (i) => setState(() => _index = i),
+        onTap: _onTabTap,
       ),
     );
+  }
+}
+
+// 保持页面在 PageView 切换后不被销毁。
+class _KeepAlivePage extends StatefulWidget {
+  final Widget child;
+  const _KeepAlivePage({required this.child});
+
+  @override
+  State<_KeepAlivePage> createState() => _KeepAlivePageState();
+}
+
+class _KeepAlivePageState extends State<_KeepAlivePage>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return widget.child;
   }
 }
 
@@ -135,12 +203,25 @@ class _BottomNav extends StatelessWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
-                        active ? tab.$2 : tab.$1,
-                        color: active ? palette.brand : AppColors.textSecondary,
-                        size: 26,
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 220),
+                        curve: Curves.easeOutCubic,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 5),
+                        decoration: BoxDecoration(
+                          color:
+                              active ? palette.light : Colors.transparent,
+                          borderRadius: BorderRadius.circular(99),
+                        ),
+                        child: Icon(
+                          active ? tab.$2 : tab.$1,
+                          color: active
+                              ? palette.brand
+                              : AppColors.textSecondary,
+                          size: 22,
+                        ),
                       ),
-                      const SizedBox(height: 3),
+                      const SizedBox(height: 2),
                       Text(
                         tab.$3,
                         style: TextStyle(

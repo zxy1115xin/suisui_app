@@ -1,7 +1,9 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../app_colors.dart';
 import '../app_theme.dart';
+import '../profile_store.dart';
 import '../weight_store.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -12,27 +14,25 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  // 页面设置状态：主题和个人基础信息。
-  String _avatar = '🌷';
-  String _nickname = '岁岁';
-  DateTime _birthday = DateTime(1998, 4, 26);
-  double _height = 162;
-
   int get _age {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    var age = today.year - _birthday.year;
-    final birthdayThisYear =
-        DateTime(today.year, _birthday.month, _birthday.day);
+    var age = today.year - ProfileStore.birthday.year;
+    final birthdayThisYear = DateTime(
+        today.year, ProfileStore.birthday.month, ProfileStore.birthday.day);
     if (today.isBefore(birthdayThisYear)) age -= 1;
     return age;
   }
 
   String get _birthdayText =>
-      '${_birthday.year}年${_birthday.month}月${_birthday.day}日';
+      '${ProfileStore.birthday.year}年'
+      '${ProfileStore.birthday.month}月'
+      '${ProfileStore.birthday.day}日';
 
-  double _bmiForWeight(double weight) =>
-      weight / ((_height / 100) * (_height / 100));
+  double _bmiForWeight(double weight) {
+    final h = ProfileStore.height / 100;
+    return weight / (h * h);
+  }
 
   String _bmiLabelFor(double bmi) {
     if (bmi < 18.5) return '偏瘦';
@@ -51,16 +51,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
-    WeightStore.weights.addListener(_refreshFromWeightStore);
+    WeightStore.weights.addListener(_refresh);
+    ProfileStore.version.addListener(_refresh);
   }
 
   @override
   void dispose() {
-    WeightStore.weights.removeListener(_refreshFromWeightStore);
+    WeightStore.weights.removeListener(_refresh);
+    ProfileStore.version.removeListener(_refresh);
     super.dispose();
   }
 
-  void _refreshFromWeightStore() {
+  void _refresh() {
     if (mounted) setState(() {});
   }
 
@@ -68,8 +70,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return showGeneralDialog<T>(
       context: context,
       barrierDismissible: true,
-      barrierLabel: '关闭个人信息弹案窗',
-      barrierColor: Colors.black.withOpacity(0.06),
+      barrierLabel: '关闭个人信息编辑窗',
+      barrierColor: Colors.black.withValues(alpha: 0.06),
       transitionDuration: const Duration(milliseconds: 140),
       pageBuilder: (_, __, ___) => const SizedBox.shrink(),
       transitionBuilder: (dialogContext, animation, _, __) {
@@ -114,7 +116,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               spacing: 10,
               runSpacing: 10,
               children: avatars.map((avatar) {
-                final selected = avatar == _avatar;
+                final selected = avatar == ProfileStore.avatar;
                 return GestureDetector(
                   onTap: () => Navigator.pop(context, avatar),
                   child: Container(
@@ -142,24 +144,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       ),
     );
-    if (picked != null) setState(() => _avatar = picked);
+    if (picked != null) {
+      ProfileStore.save(
+        newAvatar: picked,
+        newNickname: ProfileStore.nickname,
+        newBirthday: ProfileStore.birthday,
+        newHeight: ProfileStore.height,
+      );
+    }
   }
 
   Future<void> _showProfileEditor() async {
     final result = await _showProfilePopup<_ProfileEditResult>(
       _ProfileEditor(
-        nickname: _nickname,
-        birthday: _birthday,
-        height: _height,
+        nickname: ProfileStore.nickname,
+        birthday: ProfileStore.birthday,
+        height: ProfileStore.height,
         color: AppThemeController.palette.brand,
       ),
     );
     if (result == null) return;
-    setState(() {
-      _nickname = result.nickname;
-      _birthday = result.birthday;
-      _height = result.height;
-    });
+    ProfileStore.save(
+      newAvatar: ProfileStore.avatar,
+      newNickname: result.nickname,
+      newBirthday: result.birthday,
+      newHeight: result.height,
+    );
   }
 
   @override
@@ -174,7 +184,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         children: [
           const Text('我的',
-              style: TextStyle(fontSize: 22, color: AppColors.textPrimary)),
+              style: TextStyle(
+                  fontFamily: 'XinDiXiaWuCha',
+                  fontSize: 22,
+                  color: AppColors.textPrimary)),
           const SizedBox(height: 16),
           _SLabel('个人信息'),
           _Card(
@@ -192,7 +205,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         decoration: BoxDecoration(
                             shape: BoxShape.circle, color: theme.light),
                         child: Center(
-                            child: Text(_avatar,
+                            child: Text(ProfileStore.avatar,
                                 style: const TextStyle(fontSize: 22))),
                       ),
                     ),
@@ -201,11 +214,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(_nickname,
+                          Text(ProfileStore.nickname,
                               style: const TextStyle(
                                   fontSize: 15, color: AppColors.textPrimary)),
                           Text(
-                              '生日 $_birthdayText · $_age岁 · 身高 ${_height.toStringAsFixed(0)}cm',
+                              '生日 $_birthdayText · $_age岁 · 身高 ${ProfileStore.height.toStringAsFixed(0)}cm',
                               style: const TextStyle(
                                   fontSize: 11,
                                   color: AppColors.textSecondary)),
@@ -314,6 +327,71 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                         ],
                       ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _SLabel('外观'),
+          _Card(
+            children: [
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+                child: Row(
+                  children: [
+                    const Text('主题颜色',
+                        style: TextStyle(
+                            fontSize: 13, color: AppColors.textPrimary)),
+                    const Spacer(),
+                    ValueListenableBuilder<int>(
+                      valueListenable: AppThemeController.index,
+                      builder: (context, currentIndex, _) {
+                        return Row(
+                          children:
+                              List.generate(appThemePalettes.length, (i) {
+                            final p = appThemePalettes[i];
+                            final selected = currentIndex == i;
+                            return GestureDetector(
+                              onTap: () {
+                                HapticFeedback.selectionClick();
+                                AppThemeController.select(i);
+                              },
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 220),
+                                curve: Curves.easeOutCubic,
+                                margin: const EdgeInsets.only(left: 10),
+                                width: 26,
+                                height: 26,
+                                decoration: BoxDecoration(
+                                  color: p.brand,
+                                  shape: BoxShape.circle,
+                                  border: selected
+                                      ? Border.all(
+                                          color: Colors.white, width: 2.5)
+                                      : null,
+                                  boxShadow: selected
+                                      ? [
+                                          BoxShadow(
+                                            color:
+                                                p.brand.withValues(alpha: 0.5),
+                                            blurRadius: 6,
+                                            spreadRadius: 1,
+                                          )
+                                        ]
+                                      : null,
+                                ),
+                                child: selected
+                                    ? const Icon(Icons.check,
+                                        color: Colors.white, size: 13)
+                                    : null,
+                              ),
+                            );
+                          }),
+                        );
+                      },
                     ),
                   ],
                 ),

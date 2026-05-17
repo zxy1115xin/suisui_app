@@ -11,4 +11,4 @@ PRODUCT_NAME = suisui_app
 PRODUCT_BUNDLE_IDENTIFIER = com.example.suisuiApp
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 com.example. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © com.example. All rights reserved.

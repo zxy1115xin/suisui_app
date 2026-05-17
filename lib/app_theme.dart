@@ -1,7 +1,7 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'app_colors.dart';
+import 'storage_service.dart';
 
 const appThemePalettes = [
   AppThemePalette('暖橙', AppColors.brand, AppColors.brandLight),
@@ -22,12 +22,22 @@ class AppThemePalette {
 class AppThemeController {
   AppThemeController._();
 
+  static const _key = 'theme_index';
+
   static final ValueNotifier<int> index = ValueNotifier<int>(0);
 
   static AppThemePalette get palette => appThemePalettes[index.value];
 
+  static Future<void> load() async {
+    final saved = StorageService.getInt(_key);
+    if (saved != null && saved >= 0 && saved < appThemePalettes.length) {
+      index.value = saved;
+    }
+  }
+
   static void select(int value) {
     if (value < 0 || value >= appThemePalettes.length) return;
     index.value = value;
+    StorageService.setInt(_key, value);
   }
 }

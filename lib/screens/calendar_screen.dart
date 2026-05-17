@@ -3,6 +3,9 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import 'package:lunar/lunar.dart';
 
 import '../app_colors.dart';
 import '../health_store.dart';
@@ -10,42 +13,14 @@ import '../important_date_store.dart';
 import '../todo_store.dart';
 import '../weight_store.dart';
 
-// 数据层：农历、事件和节假日相关的静态数据与辅助方法。
-const _lunarNames = [
-  '初一',
-  '初二',
-  '初三',
-  '初四',
-  '初五',
-  '初六',
-  '初七',
-  '初八',
-  '初九',
-  '初十',
-  '十一',
-  '十二',
-  '十三',
-  '十四',
-  '十五',
-  '十六',
-  '十七',
-  '十八',
-  '十九',
-  '二十',
-  '廿一',
-  '廿二',
-  '廿三',
-  '廿四',
-  '廿五',
-  '廿六',
-  '廿七',
-  '廿八',
-  '廿九',
-  '三十',
-];
+// 返回给定公历日期对应的农历日（初一、初二…三十）。
+String _lunarDay(DateTime date) =>
+    Solar.fromYmd(date.year, date.month, date.day).getLunar().getDayInChinese();
 
-// 农历日期生成器的演示实现：当前版本只按 30 天循环展示，后续接入真实农历库时替换这里即可。
-String _lunar(int day) => _lunarNames[(day + 2) % 30];
+String _lunarYearText(DateTime date) {
+  final lunar = Solar.fromYmd(date.year, date.month, date.day).getLunar();
+  return '农历${lunar.getYearInGanZhi()}年';
+}
 
 // 日历单元格上的业务事件：生日、节气、普通事件、备注和生理期标记都会汇总到这里。
 class _Ev {
@@ -102,7 +77,19 @@ DateTime _dateOnly(DateTime date) => DateTime(date.year, date.month, date.day);
 // 统一使用北京时间（UTC+8）作为日历“当前时间”来源。
 DateTime _beijingNow() => DateTime.now().toUtc().add(const Duration(hours: 8));
 
+// 最多缓存 15 个月的事件数据（足够覆盖年视图 12 格 + 相邻月份）。
+// key = "$year/$month/${重要日期版本}/${生理期列表ID}/${待办列表ID}"
+final _eventsForMonthCache = <String, Map<int, _Ev>>{};
+
 Map<int, _Ev> _eventsForMonth(int year, int month) {
+  final key = '$year/$month'
+      '/${ImportantDateStore.version.value}'
+      '/${identityHashCode(HealthStore.periodRecords.value)}'
+      '/${identityHashCode(TodoStore.items.value)}';
+  final cached = _eventsForMonthCache[key];
+  if (cached != null) return cached;
+  if (_eventsForMonthCache.length >= 15) _eventsForMonthCache.clear();
+
   final map = <int, _Ev>{};
 
   void merge(
@@ -195,6 +182,7 @@ Map<int, _Ev> _eventsForMonth(int year, int month) {
     }
   }
 
+  _eventsForMonthCache[key] = map;
   return map;
 }
 
@@ -280,6 +268,7 @@ const _weekLabels = ['日', '一', '二', '三', '四', '五', '六'];
 const _yearWeekLabels = ['一', '二', '三', '四', '五', '六', '日'];
 const _collapsedMonthRowHeight = 58.0;
 const _rangeBandHeightFactor = 0.45;
+const _calendarHorizontalPadding = 18.0;
 
 DateTime get _todayDate {
   final now = _beijingNow();
@@ -620,6 +609,7 @@ class _Header extends StatelessWidget {
         ? '${displayDate.year}年'
         : _monthLabel(displayDate.month);
     final showSubtitle = view != _View.year;
+    final subtitleText = '${displayDate.year} · ${_lunarYearText(displayDate)}';
 
     // 日历标题区：左侧显示月份和农历年份，右侧负责视图切换与新增入口。
     return Padding(
@@ -638,6 +628,7 @@ class _Header extends StatelessWidget {
                   children: [
                     Text(titleText,
                         style: const TextStyle(
+                          fontFamily: 'XinDiXiaWuCha',
                           fontSize: 22,
                           color: AppColors.textPrimary,
                           height: 1.1,
@@ -649,10 +640,15 @@ class _Header extends StatelessWidget {
                     ],
                   ],
                 ),
-                if (showSubtitle)
-                  Text('${displayDate.year}年',
+                if (showSubtitle) ...[
+                  const SizedBox(height: 5),
+                  Text(subtitleText,
                       style: const TextStyle(
-                          fontSize: 11, color: AppColors.textSecondary)),
+                        fontSize: 11,
+                        height: 1.15,
+                        color: AppColors.textSecondary,
+                      )),
+                ],
               ],
             ),
           ),
@@ -782,90 +778,94 @@ class _MonthViewState extends State<_MonthView> {
     final dates = _selectedWeekDates();
     final today = _todayDate;
     final events = _eventsForMonth(widget.year, widget.month);
-    return Container(
-      decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: AppColors.border, width: 0.5),
+    return Padding(
+      padding:
+          const EdgeInsets.symmetric(horizontal: _calendarHorizontalPadding),
+      child: Container(
+        decoration: const BoxDecoration(
+          border: Border(
+            bottom: BorderSide(color: AppColors.border, width: 0.5),
+          ),
         ),
-      ),
-      child: Row(
-        children: List.generate(7, (i) {
-          final date = dates[i];
-          final inCurrentMonth =
-              date.year == widget.year && date.month == widget.month;
-          final isToday = DateUtils.isSameDay(date, today);
-          final isSelected = inCurrentMonth && date.day == widget.selected;
-          final ev = inCurrentMonth ? events[date.day] : null;
-          return Expanded(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => widget.onSelectDate(date),
-              onDoubleTap: () => widget.onOpenDay(date),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _weekLabels[i],
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: i == 0 || i == 6
-                            ? AppColors.holiday
-                            : AppColors.textSecondary,
+        child: Row(
+          children: List.generate(7, (i) {
+            final date = dates[i];
+            final inCurrentMonth =
+                date.year == widget.year && date.month == widget.month;
+            final isToday = DateUtils.isSameDay(date, today);
+            final isSelected = inCurrentMonth && date.day == widget.selected;
+            final ev = inCurrentMonth ? events[date.day] : null;
+            return Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => widget.onSelectDate(date),
+                onDoubleTap: () => widget.onOpenDay(date),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _weekLabels[i],
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: i == 0 || i == 6
+                              ? AppColors.holiday
+                              : AppColors.textSecondary,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Container(
-                      width: 30,
-                      height: 30,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: isToday
-                            ? AppColors.brand
-                            : isSelected
-                                ? AppColors.brandLight
-                                : Colors.transparent,
-                      ),
-                      child: Center(
-                        child: Text(
-                          '${date.day}',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: isToday
-                                ? Colors.white
-                                : inCurrentMonth
-                                    ? (i == 0 || i == 6
-                                        ? AppColors.holiday
-                                        : AppColors.textPrimary)
-                                    : AppColors.textSecondary.withAlpha(130),
-                            fontWeight:
-                                isToday ? FontWeight.bold : FontWeight.normal,
+                      const SizedBox(height: 4),
+                      Container(
+                        width: 30,
+                        height: 30,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: isToday
+                              ? AppColors.brand
+                              : isSelected
+                                  ? AppColors.brandLight
+                                  : Colors.transparent,
+                        ),
+                        child: Center(
+                          child: Text(
+                            '${date.day}',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: isToday
+                                  ? Colors.white
+                                  : inCurrentMonth
+                                      ? (i == 0 || i == 6
+                                          ? AppColors.holiday
+                                          : AppColors.textPrimary)
+                                      : AppColors.textSecondary.withAlpha(130),
+                              fontWeight:
+                                  isToday ? FontWeight.bold : FontWeight.normal,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 3),
-                    Container(
-                      width: 4,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: ev?.period == true
-                            ? AppColors.period
-                            : ev?.birthday != null
-                                ? AppColors.birthday
-                                : ev?.eventName != null
-                                    ? AppColors.event
-                                    : Colors.transparent,
+                      const SizedBox(height: 3),
+                      Container(
+                        width: 4,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: ev?.period == true
+                              ? AppColors.period
+                              : ev?.birthday != null
+                                  ? AppColors.birthday
+                                  : ev?.eventName != null
+                                      ? AppColors.event
+                                      : Colors.transparent,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-          );
-        }),
+            );
+          }),
+        ),
       ),
     );
   }
@@ -994,6 +994,8 @@ class _MonthViewState extends State<_MonthView> {
                           child: cell.day == 0
                               ? const SizedBox()
                               : _DayCell(
+                                  year: widget.year,
+                                  month: widget.month,
                                   day: cell.day,
                                   selected: cell.inCurrentMonth &&
                                       cell.day == widget.selected,
@@ -1090,7 +1092,8 @@ class _MonthViewState extends State<_MonthView> {
         // 星期标题行。
         if (_mode != _MonthCalendarMode.week) ...[
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6),
+            padding: const EdgeInsets.symmetric(
+                horizontal: _calendarHorizontalPadding),
             child: Row(
               children: _weekLabels
                   .map((d) => Expanded(
@@ -1142,7 +1145,8 @@ class _MonthViewState extends State<_MonthView> {
                 }
               },
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: _calendarHorizontalPadding),
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     return AnimatedSize(
@@ -1196,6 +1200,8 @@ class _DayLabel {
 }
 
 class _DayCell extends StatelessWidget {
+  final int year;
+  final int month;
   final int day;
   final bool selected;
   final bool today;
@@ -1208,6 +1214,8 @@ class _DayCell extends StatelessWidget {
   final VoidCallback? onDoubleTap;
 
   const _DayCell({
+    required this.year,
+    required this.month,
     required this.day,
     required this.selected,
     required this.today,
@@ -1226,7 +1234,7 @@ class _DayCell extends StatelessWidget {
     final isPeriodStart = ev?.periodStart == true;
     final isPeriodEnd = ev?.periodEnd == true;
     final isWeekend = ((day + monthStartDay - 1) % 7 == 0);
-    final lunarStr = ev?.solarTerm ?? _lunar(day);
+    final lunarStr = ev?.solarTerm ?? _lunarDay(DateTime(year, month, day));
     final labels = _labels.take(3).toList();
     final dateColor = today
         ? Colors.white
@@ -1422,7 +1430,8 @@ class _SelectedDayPlans extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ev = _eventsForMonth(_todayDate.year, _todayDate.month)[day];
-    final lunarStr = ev?.solarTerm ?? _lunar(day);
+    final lunarStr = ev?.solarTerm ??
+        _lunarDay(DateTime(_todayDate.year, _todayDate.month, day));
     final isToday = day == _today;
 
     return Container(
@@ -1598,69 +1607,71 @@ class _TodoPlanRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.brandLight.withAlpha(78),
-        borderRadius: BorderRadius.circular(8),
+    return Dismissible(
+      key: ValueKey(todo.id),
+      direction: DismissDirection.endToStart,
+      onDismissed: (_) {
+        HapticFeedback.mediumImpact();
+        onDelete?.call(todo);
+      },
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 14),
+        decoration: BoxDecoration(
+          color: AppColors.brand.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Icon(Icons.delete_outline,
+            size: 18, color: AppColors.brand),
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 24,
-            height: 24,
-            decoration: BoxDecoration(
-              color: AppColors.brandLight,
-              borderRadius: BorderRadius.circular(7),
-            ),
-            child: Center(
-              child: Text('$index',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: AppColors.brand,
-                    fontWeight: FontWeight.w600,
-                  )),
-            ),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onLongPress: () {
+          HapticFeedback.selectionClick();
+          onEdit?.call(todo);
+        },
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: AppColors.brandLight.withAlpha(78),
+            borderRadius: BorderRadius.circular(8),
           ),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Text(todo.text,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 15,
-                  height: 1.2,
-                  color: AppColors.textPrimary,
-                  fontWeight: FontWeight.w400,
-                )),
-          ),
-          const SizedBox(width: 10),
-          Tooltip(
-            message: '修改',
-            child: GestureDetector(
-              onTap: () => onEdit?.call(todo),
-              child: const SizedBox(
-                width: 28,
-                height: 28,
+          child: Row(
+            children: [
+              Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: AppColors.brandLight,
+                  borderRadius: BorderRadius.circular(7),
+                ),
                 child: Center(
-                  child: Icon(Icons.edit_outlined,
-                      size: 16, color: AppColors.textSecondary),
+                  child: Text('$index',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.brand,
+                        fontWeight: FontWeight.w600,
+                      )),
                 ),
               ),
-            ),
-          ),
-          GestureDetector(
-            onTap: () => onDelete?.call(todo),
-            child: const SizedBox(
-              width: 28,
-              height: 28,
-              child: Center(
-                child: Icon(Icons.close, size: 16, color: AppColors.border),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(todo.text,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      height: 1.2,
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w400,
+                    )),
               ),
-            ),
+              const Icon(Icons.chevron_right,
+                  size: 15, color: AppColors.border),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -1859,16 +1870,16 @@ class _TodoInfoCard extends StatelessWidget {
                 style: TextStyle(
                     fontSize: 15, height: 1.2, color: AppColors.border));
           }
-          return Column(
-            children: [
-              for (var i = 0; i < todos.length; i++)
-                _TodoPlanRow(
-                  index: i + 1,
-                  todo: todos[i],
-                  onEdit: onEdit,
-                  onDelete: onDelete,
-                ),
-            ],
+          return ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: todos.length,
+            itemBuilder: (_, i) => _TodoPlanRow(
+              index: i + 1,
+              todo: todos[i],
+              onEdit: onEdit,
+              onDelete: onDelete,
+            ),
           );
         },
       ),
@@ -1917,16 +1928,16 @@ class _UpcomingInfoCard extends StatelessWidget {
                 style: TextStyle(
                     fontSize: 15, height: 1.2, color: AppColors.border));
           }
-          return Column(
-            children: [
-              for (var i = 0; i < items.length; i++)
-                _UpcomingImportantRow(
-                  item: items[i],
-                  last: i == items.length - 1,
-                  onEdit: () => onEdit(items[i]),
-                  onDelete: () => onDelete(items[i]),
-                ),
-            ],
+          return ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: items.length,
+            itemBuilder: (_, i) => _UpcomingImportantRow(
+              item: items[i],
+              last: i == items.length - 1,
+              onEdit: () => onEdit(items[i]),
+              onDelete: () => onDelete(items[i]),
+            ),
           );
         },
       ),
@@ -1967,82 +1978,79 @@ class _UpcomingImportantRow extends StatelessWidget {
             : days > 1
                 ? '$days 天后'
                 : '已过 ${-days} 天';
-    return Container(
-      padding: EdgeInsets.only(bottom: last ? 0 : 10, top: last ? 0 : 0),
-      margin: EdgeInsets.only(bottom: last ? 0 : 10),
-      decoration: BoxDecoration(
-        border: last
-            ? null
-            : const Border(
-                bottom: BorderSide(color: AppColors.border, width: 0.5)),
+    return Dismissible(
+      key: ValueKey('${item.type.name}_${item.id}'),
+      direction: DismissDirection.endToStart,
+      onDismissed: (_) {
+        HapticFeedback.mediumImpact();
+        onDelete();
+      },
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 16),
+        color: item.color.withValues(alpha: 0.10),
+        child: Icon(Icons.delete_outline, size: 20, color: item.color),
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 42,
-            height: 42,
-            decoration: BoxDecoration(
-              color: item.color.withAlpha(22),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(_icon, size: 18, color: item.color),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onLongPress: () {
+          HapticFeedback.selectionClick();
+          onEdit();
+        },
+        child: Container(
+          padding: EdgeInsets.only(
+              bottom: last ? 0 : 10, top: last ? 0 : 0),
+          margin: EdgeInsets.only(bottom: last ? 0 : 10),
+          decoration: BoxDecoration(
+            border: last
+                ? null
+                : const Border(
+                    bottom:
+                        BorderSide(color: AppColors.border, width: 0.5)),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(item.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 15,
-                        height: 1.2,
-                        color: AppColors.textPrimary,
-                        fontWeight: FontWeight.w400)),
-                const SizedBox(height: 3),
-                Text('${item.dateText} · ${item.subtitle}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 13,
-                        height: 1.2,
-                        color: AppColors.textSecondary)),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(dayText,
-              style: TextStyle(fontSize: 15, height: 1.2, color: item.color)),
-          Tooltip(
-            message: '修改',
-            child: GestureDetector(
-              onTap: onEdit,
-              child: const SizedBox(
-                width: 34,
-                height: 34,
-                child: Center(
-                  child: Icon(Icons.edit_outlined,
-                      size: 18, color: AppColors.textSecondary),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: item.color.withAlpha(22),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(_icon, size: 18, color: item.color),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(item.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 15,
+                            height: 1.2,
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.w400)),
+                    const SizedBox(height: 3),
+                    Text('${item.dateText} · ${item.subtitle}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 13,
+                            height: 1.2,
+                            color: AppColors.textSecondary)),
+                  ],
                 ),
               ),
-            ),
+              const SizedBox(width: 8),
+              Text(dayText,
+                  style:
+                      TextStyle(fontSize: 15, height: 1.2, color: item.color)),
+              const SizedBox(width: 4),
+            ],
           ),
-          Tooltip(
-            message: '删除',
-            child: GestureDetector(
-              onTap: onDelete,
-              child: const SizedBox(
-                width: 34,
-                height: 34,
-                child: Center(
-                  child: Icon(Icons.delete_outline,
-                      size: 18, color: AppColors.holiday),
-                ),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -2711,22 +2719,8 @@ class _WeekView extends StatelessWidget {
 }
 
 String _lunarDateText(DateTime date) {
-  const lunarMonths = [
-    '正月',
-    '二月',
-    '三月',
-    '四月',
-    '五月',
-    '六月',
-    '七月',
-    '八月',
-    '九月',
-    '十月',
-    '冬月',
-    '腊月',
-  ];
-  final lunarMonth = lunarMonths[(date.month - 1).clamp(0, 11).toInt()];
-  return '农历$lunarMonth${_lunar(date.day)}';
+  final lunar = Solar.fromYmd(date.year, date.month, date.day).getLunar();
+  return '农历${lunar.getMonthInChinese()}${lunar.getDayInChinese()}';
 }
 
 String _seasonStemText(DateTime date, _Ev? ev) {
@@ -3391,7 +3385,7 @@ class _SyncedYearStatsPanel extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: _StatCard(
-              icon: '馃敟',
+              icon: '🔥',
               value: '$fitnessDays天',
               label: '健身打卡',
               color: AppColors.event,

@@ -31,6 +31,8 @@ dependencies:
   # 下方依赖会把 Cupertino Icons 字体加入应用，
   # 便于配合 CupertinoIcons 类使用 iOS 风格图标。
   cupertino_icons: ^1.0.8
+  shared_preferences: ^2.3.0
+  lunar: ^1.0.0
 
 dev_dependencies:
   flutter_test:
