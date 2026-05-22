@@ -266,7 +266,8 @@ List<DateTime> _dates(DateTime start, DateTime end) {
 
 const _weekLabels = ['日', '一', '二', '三', '四', '五', '六'];
 const _yearWeekLabels = ['一', '二', '三', '四', '五', '六', '日'];
-const _collapsedMonthRowHeight = 58.0;
+const _collapsedMonthRowHeight = 76.0;
+const _expandedMonthRowHeight = 96.0;
 const _rangeBandHeightFactor = 0.45;
 const _calendarHorizontalPadding = 18.0;
 
@@ -878,7 +879,7 @@ class _MonthViewState extends State<_MonthView> {
     final preferredRowHeight = switch (_mode) {
       _MonthCalendarMode.week => 62.0,
       _MonthCalendarMode.month => _collapsedMonthRowHeight,
-      _MonthCalendarMode.detail => 80.0,
+      _MonthCalendarMode.detail => _expandedMonthRowHeight,
     };
     final today = _todayDate;
     final events = _eventsForMonth(widget.year, widget.month);
@@ -886,7 +887,9 @@ class _MonthViewState extends State<_MonthView> {
     final rowCount = (cells.length / 7).ceil();
     final rowHeight = maxHeight == null
         ? preferredRowHeight
-        : math.min(preferredRowHeight, maxHeight / rowCount);
+        : _mode == _MonthCalendarMode.detail
+            ? preferredRowHeight
+            : math.min(preferredRowHeight, maxHeight / rowCount);
     Widget buildRow(int rowIdx) {
       final start = rowIdx * 7;
       final end = (start + 7).clamp(0, cells.length);
@@ -1050,13 +1053,12 @@ class _MonthViewState extends State<_MonthView> {
     );
   }
 
-  Widget _buildExpandedCalendarGrid(List<_MonthDay> cells) {
-    const expandedRowHeight = 80.0;
+  Widget _buildScrollableDetailCalendarGrid(List<_MonthDay> cells) {
     final rowCount = (cells.length / 7).ceil();
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
       child: SizedBox(
-        height: expandedRowHeight * rowCount,
+        height: _expandedMonthRowHeight * rowCount,
         child: _buildCalendarGrid(cells),
       ),
     );
@@ -1113,7 +1115,7 @@ class _MonthViewState extends State<_MonthView> {
           if (_mode == _MonthCalendarMode.month) const SizedBox(height: 2),
         ],
         Expanded(
-          flex: _mode == _MonthCalendarMode.detail ? 5 : 4,
+          flex: _mode == _MonthCalendarMode.month ? 9 : 1,
           child: Listener(
             onPointerSignal: (event) {
               if (event is PointerScrollEvent) {
@@ -1156,7 +1158,7 @@ class _MonthViewState extends State<_MonthView> {
                       child: _mode == _MonthCalendarMode.week
                           ? _buildWeekCalendarStrip()
                           : _mode == _MonthCalendarMode.detail
-                              ? _buildExpandedCalendarGrid(cells)
+                              ? _buildScrollableDetailCalendarGrid(cells)
                               : _buildCalendarGrid(
                                   cells,
                                   maxHeight: constraints.maxHeight,
@@ -1168,11 +1170,14 @@ class _MonthViewState extends State<_MonthView> {
             ),
           ),
         ),
-        Expanded(
-          child: _CalendarInfoPanels(
-            selectedDate: DateTime(widget.year, widget.month, widget.selected),
+        if (_mode != _MonthCalendarMode.detail)
+          Expanded(
+            flex: _mode == _MonthCalendarMode.month ? 2 : 1,
+            child: _CalendarInfoPanels(
+              selectedDate:
+                  DateTime(widget.year, widget.month, widget.selected),
+            ),
           ),
-        ),
       ],
     );
   }
@@ -1326,14 +1331,14 @@ class _DayCell extends StatelessWidget {
             ),
             Align(
               alignment: showLabels
-                  ? Alignment.bottomCenter
+                  ? const Alignment(0, 0.96)
                   : const Alignment(0, 0.86),
               child: showLabels && labels.isNotEmpty
                   ? SizedBox(
-                      height: 44,
+                      height: 48,
                       child: ClipRect(
                         child: Transform.translate(
-                          offset: const Offset(0, 18),
+                          offset: const Offset(0, 24),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -1621,8 +1626,8 @@ class _TodoPlanRow extends StatelessWidget {
           color: AppColors.brand.withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(8),
         ),
-        child: const Icon(Icons.delete_outline,
-            size: 18, color: AppColors.brand),
+        child:
+            const Icon(Icons.delete_outline, size: 18, color: AppColors.brand),
       ),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -1699,6 +1704,7 @@ class _CalendarInfoPanels extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             _UpcomingInfoCard(
+              selectedDate: selectedDate,
               onAdd: () => _showImportantDateDialog(context, selectedDate),
               onEdit: (item) => _showImportantDateDialog(
                 context,
@@ -1888,10 +1894,12 @@ class _TodoInfoCard extends StatelessWidget {
 }
 
 class _UpcomingInfoCard extends StatelessWidget {
+  final DateTime selectedDate;
   final VoidCallback onAdd;
   final ValueChanged<UpcomingImportantDate> onEdit;
   final ValueChanged<UpcomingImportantDate> onDelete;
   const _UpcomingInfoCard({
+    required this.selectedDate,
     required this.onAdd,
     required this.onEdit,
     required this.onDelete,
@@ -1934,6 +1942,7 @@ class _UpcomingInfoCard extends StatelessWidget {
             itemCount: items.length,
             itemBuilder: (_, i) => _UpcomingImportantRow(
               item: items[i],
+              selectedDate: selectedDate,
               last: i == items.length - 1,
               onEdit: () => onEdit(items[i]),
               onDelete: () => onDelete(items[i]),
@@ -1947,11 +1956,13 @@ class _UpcomingInfoCard extends StatelessWidget {
 
 class _UpcomingImportantRow extends StatelessWidget {
   final UpcomingImportantDate item;
+  final DateTime selectedDate;
   final bool last;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   const _UpcomingImportantRow({
     required this.item,
+    required this.selectedDate,
     required this.last,
     required this.onEdit,
     required this.onDelete,
@@ -1970,7 +1981,7 @@ class _UpcomingImportantRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final days = item.date.difference(_todayDate).inDays;
+    final days = item.date.difference(dateOnly(selectedDate)).inDays;
     final dayText = days == 0
         ? '今天'
         : days == 1
@@ -1998,15 +2009,13 @@ class _UpcomingImportantRow extends StatelessWidget {
           onEdit();
         },
         child: Container(
-          padding: EdgeInsets.only(
-              bottom: last ? 0 : 10, top: last ? 0 : 0),
+          padding: EdgeInsets.only(bottom: last ? 0 : 10, top: last ? 0 : 0),
           margin: EdgeInsets.only(bottom: last ? 0 : 10),
           decoration: BoxDecoration(
             border: last
                 ? null
                 : const Border(
-                    bottom:
-                        BorderSide(color: AppColors.border, width: 0.5)),
+                    bottom: BorderSide(color: AppColors.border, width: 0.5)),
           ),
           child: Row(
             children: [
@@ -2603,22 +2612,22 @@ class _WeekView extends StatelessWidget {
     final dates = _weekDates();
     final today = _todayDate;
     final events = _eventsForMonth(year, month);
-    return Listener(
-      onPointerSignal: (event) {
-        if (event is PointerScrollEvent && event.scrollDelta.dy < 0) {
-          onExpandToMonth();
-        }
-      },
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onVerticalDragEnd: (details) {
-          if ((details.primaryVelocity ?? 0) > 240) {
-            onExpandToMonth();
-          }
-        },
-        child: Column(
-          children: [
-            Container(
+    return Column(
+      children: [
+        Listener(
+          onPointerSignal: (event) {
+            if (event is PointerScrollEvent && event.scrollDelta.dy < 0) {
+              onExpandToMonth();
+            }
+          },
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onVerticalDragEnd: (details) {
+              if ((details.primaryVelocity ?? 0) > 240) {
+                onExpandToMonth();
+              }
+            },
+            child: Container(
               decoration: const BoxDecoration(
                 border: Border(
                   bottom: BorderSide(color: AppColors.border, width: 0.5),
@@ -2706,14 +2715,14 @@ class _WeekView extends StatelessWidget {
                 }),
               ),
             ),
-            Expanded(
-              child: _CalendarInfoPanels(
-                selectedDate: DateTime(year, month, selected),
-              ),
-            ),
-          ],
+          ),
         ),
-      ),
+        Expanded(
+          child: _CalendarInfoPanels(
+            selectedDate: DateTime(year, month, selected),
+          ),
+        ),
+      ],
     );
   }
 }

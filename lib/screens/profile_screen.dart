@@ -1,6 +1,5 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../app_colors.dart';
 import '../app_theme.dart';
 import '../profile_store.dart';
@@ -24,8 +23,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return age;
   }
 
-  String get _birthdayText =>
-      '${ProfileStore.birthday.year}年'
+  String get _birthdayText => '${ProfileStore.birthday.year}年'
       '${ProfileStore.birthday.month}月'
       '${ProfileStore.birthday.day}日';
 
@@ -97,63 +95,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Future<void> _showAvatarPicker() async {
-    const avatars = ['🌷', '😊', '⭐', '🍀', '🌙', '☀', '💗', '🧡'];
-    final picked = await _showProfilePopup<String>(
-      Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('选择头像',
-                style: TextStyle(
-                    fontSize: 15,
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.w600)),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: avatars.map((avatar) {
-                final selected = avatar == ProfileStore.avatar;
-                return GestureDetector(
-                  onTap: () => Navigator.pop(context, avatar),
-                  child: Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: selected
-                          ? AppThemeController.palette.light
-                          : AppColors.bgPage,
-                      border: Border.all(
-                          color: selected
-                              ? AppThemeController.palette.brand
-                              : AppColors.border,
-                          width: selected ? 2 : 1),
-                    ),
-                    child: Center(
-                        child:
-                            Text(avatar, style: const TextStyle(fontSize: 22))),
-                  ),
-                );
-              }).toList(),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (picked != null) {
-      ProfileStore.save(
-        newAvatar: picked,
-        newNickname: ProfileStore.nickname,
-        newBirthday: ProfileStore.birthday,
-        newHeight: ProfileStore.height,
-      );
-    }
-  }
-
   Future<void> _showProfileEditor() async {
     final result = await _showProfilePopup<_ProfileEditResult>(
       _ProfileEditor(
@@ -165,7 +106,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
     if (result == null) return;
     ProfileStore.save(
-      newAvatar: ProfileStore.avatar,
       newNickname: result.nickname,
       newBirthday: result.birthday,
       newHeight: result.height,
@@ -196,27 +136,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 padding: const EdgeInsets.all(14),
                 child: Row(
                   children: [
-                    GestureDetector(
-                      onTap: _showAvatarPicker,
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        width: 52,
-                        height: 52,
-                        decoration: BoxDecoration(
-                            shape: BoxShape.circle, color: theme.light),
-                        child: Center(
-                            child: Text(ProfileStore.avatar,
-                                style: const TextStyle(fontSize: 22))),
-                      ),
-                    ),
-                    const SizedBox(width: 14),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(ProfileStore.nickname,
                               style: const TextStyle(
-                                  fontSize: 15, color: AppColors.textPrimary)),
+                                  fontSize: 13, color: AppColors.textPrimary)),
                           Text(
                               '生日 $_birthdayText · $_age岁 · 身高 ${ProfileStore.height.toStringAsFixed(0)}cm',
                               style: const TextStyle(
@@ -228,14 +154,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     GestureDetector(
                       onTap: _showProfileEditor,
                       child: Row(
-                        children: const [
+                        children: [
                           Icon(Icons.edit_outlined,
-                              size: 15, color: AppColors.textSecondary),
-                          SizedBox(width: 3),
+                              size: 14, color: theme.brand),
+                          const SizedBox(width: 3),
                           Text('修改',
                               style: TextStyle(
-                                  fontSize: 11,
-                                  color: AppColors.textSecondary)),
+                                  fontSize: 11, color: theme.brand)),
                         ],
                       ),
                     ),
@@ -263,7 +188,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             children: [
                               Text(bmi.toStringAsFixed(1),
                                   style:
-                                      TextStyle(fontSize: 28, color: bmiColor)),
+                                      TextStyle(fontSize: 20, color: bmiColor)),
                               const SizedBox(width: 8),
                               Container(
                                 padding: const EdgeInsets.symmetric(
@@ -286,7 +211,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       flex: 3,
                       child: Column(
                         children: [
-                          const SizedBox(height: 18),
+                          const SizedBox(height: 10),
                           ClipRRect(
                             borderRadius: BorderRadius.circular(3),
                             child: SizedBox(
@@ -327,71 +252,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                         ],
                       ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _SLabel('外观'),
-          _Card(
-            children: [
-              Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-                child: Row(
-                  children: [
-                    const Text('主题颜色',
-                        style: TextStyle(
-                            fontSize: 13, color: AppColors.textPrimary)),
-                    const Spacer(),
-                    ValueListenableBuilder<int>(
-                      valueListenable: AppThemeController.index,
-                      builder: (context, currentIndex, _) {
-                        return Row(
-                          children:
-                              List.generate(appThemePalettes.length, (i) {
-                            final p = appThemePalettes[i];
-                            final selected = currentIndex == i;
-                            return GestureDetector(
-                              onTap: () {
-                                HapticFeedback.selectionClick();
-                                AppThemeController.select(i);
-                              },
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 220),
-                                curve: Curves.easeOutCubic,
-                                margin: const EdgeInsets.only(left: 10),
-                                width: 26,
-                                height: 26,
-                                decoration: BoxDecoration(
-                                  color: p.brand,
-                                  shape: BoxShape.circle,
-                                  border: selected
-                                      ? Border.all(
-                                          color: Colors.white, width: 2.5)
-                                      : null,
-                                  boxShadow: selected
-                                      ? [
-                                          BoxShadow(
-                                            color:
-                                                p.brand.withValues(alpha: 0.5),
-                                            blurRadius: 6,
-                                            spreadRadius: 1,
-                                          )
-                                        ]
-                                      : null,
-                                ),
-                                child: selected
-                                    ? const Icon(Icons.check,
-                                        color: Colors.white, size: 13)
-                                    : null,
-                              ),
-                            );
-                          }),
-                        );
-                      },
                     ),
                   ],
                 ),
@@ -745,9 +605,12 @@ class _SLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     // 设置页分组小标题。
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6, left: 2),
+      padding: const EdgeInsets.only(bottom: 6),
       child: Text(text,
-          style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+          style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: AppColors.textPrimary)),
     );
   }
 }
@@ -810,7 +673,7 @@ class _NavRow extends StatelessWidget {
           ),
           Text(value,
               style: const TextStyle(
-                  fontSize: 13, color: AppColors.textSecondary)),
+                  fontSize: 11, color: AppColors.textSecondary)),
           const SizedBox(width: 4),
           const Icon(Icons.chevron_right, size: 16, color: AppColors.border),
         ],

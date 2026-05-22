@@ -7,7 +7,6 @@ class ProfileStore {
 
   static const _key = 'profile';
 
-  static String avatar = '🌷';
   static String nickname = '岁岁';
   static DateTime birthday = DateTime(1998, 4, 26);
   static double height = 162.0;
@@ -20,7 +19,6 @@ class ProfileStore {
     if (raw == null) return; // 首次运行，保持默认值
     try {
       final m = jsonDecode(raw) as Map<String, dynamic>;
-      avatar = m['avatar'] as String? ?? avatar;
       nickname = m['nickname'] as String? ?? nickname;
       final ms = m['birthdayMs'] as int?;
       if (ms != null) birthday = DateTime.fromMillisecondsSinceEpoch(ms);
@@ -29,12 +27,10 @@ class ProfileStore {
   }
 
   static void save({
-    required String newAvatar,
     required String newNickname,
     required DateTime newBirthday,
     required double newHeight,
   }) {
-    avatar = newAvatar;
     nickname = newNickname;
     birthday = newBirthday;
     height = newHeight;
@@ -46,7 +42,6 @@ class ProfileStore {
     StorageService.setString(
       _key,
       jsonEncode({
-        'avatar': avatar,
         'nickname': nickname,
         'birthdayMs': birthday.millisecondsSinceEpoch,
         'height': height,

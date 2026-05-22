@@ -14,8 +14,10 @@ DateTime get _today {
 
 const _todoAccent = AppColors.brand;
 const _todoAccentLight = AppColors.brandLight;
-const _eventRed = Color(0xFFD76F72);
-const _eventRedLight = Color(0xFFF8DCDD);
+const _eventColor = AppColors.event;
+const _eventColorLight = AppColors.eventLight;
+const _anniversaryColor = AppColors.period;
+const _anniversaryColorLight = AppColors.periodLight;
 
 // 页面主体。
 class JournalScreen extends StatefulWidget {
@@ -170,7 +172,7 @@ class _JournalScreenState extends State<JournalScreen>
                     return _LimitedList(
                       itemCount: todos.length,
                       maxVisible: 4,
-                      itemHeight: 48,
+                      itemHeight: 56,
                       itemBuilder: (index) {
                         final t = todos[index];
                         return _TodoItem(
@@ -190,14 +192,14 @@ class _JournalScreenState extends State<JournalScreen>
               // ── 重要事件 ──
               _SectionHeader(
                 title: '重要事件',
-                actionColor: const Color.fromARGB(255, 214, 127, 130),
+                actionColor: _eventColor,
                 onAdd: () => _showAddEventSheet(context),
               ),
               _SectionCard(
                 child: _LimitedList(
                   itemCount: futureEvents.length + pastEvents.length,
                   maxVisible: 4,
-                  itemHeight: 64,
+                  itemHeight: 56,
                   itemBuilder: (index) {
                     final isFuture = index < futureEvents.length;
                     final e = isFuture
@@ -226,7 +228,7 @@ class _JournalScreenState extends State<JournalScreen>
                 child: _LimitedList(
                   itemCount: upcomingBirthdays.length,
                   maxVisible: 4,
-                  itemHeight: 72,
+                  itemHeight: 56,
                   itemBuilder: (index) {
                     final birthday = upcomingBirthdays[index];
                     return _BirthdayItem(
@@ -246,14 +248,14 @@ class _JournalScreenState extends State<JournalScreen>
               // ── 纪念日 ──
               _SectionHeader(
                 title: '纪念日',
-                actionColor: const Color.fromARGB(255, 150, 121, 182),
+                actionColor: _anniversaryColor,
                 onAdd: () => _showAnniversarySheet(context),
               ),
               _SectionCard(
                 child: _LimitedList(
                   itemCount: upcomingAnniversaries.length,
                   maxVisible: 4,
-                  itemHeight: 72,
+                  itemHeight: 56,
                   itemBuilder: (index) {
                     final anniversary = upcomingAnniversaries[index];
                     return _AnniversaryItem(
@@ -402,12 +404,177 @@ class _SectionHeader extends StatelessWidget {
 }
 
 // 左滑删除时展示的红色背景（所有列表项共用）。
-Widget _dismissBg({Color color = const Color(0xFFD76F72)}) => Container(
+Widget _dismissBg({Color color = AppColors.brand}) => Container(
       alignment: Alignment.centerRight,
       padding: const EdgeInsets.only(right: 18),
       color: color.withValues(alpha: 0.10),
       child: Icon(Icons.delete_outline, color: color, size: 20),
     );
+
+class _RecordPill extends StatelessWidget {
+  final String text;
+  final Color color;
+  final Color background;
+  final bool muted;
+  const _RecordPill({
+    required this.text,
+    required this.color,
+    required this.background,
+    this.muted = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: 2, right: 10),
+      constraints: const BoxConstraints(minWidth: 34, maxWidth: 76),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: muted ? AppColors.bgTab : background,
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontSize: 11,
+          color: muted ? AppColors.textSecondary : color,
+          height: 1.25,
+        ),
+      ),
+    );
+  }
+}
+
+class _RecordRow extends StatelessWidget {
+  final Key rowKey;
+  final bool last;
+  final Color color;
+  final bool muted;
+  final Widget leading;
+  final String title;
+  final String? subtitle;
+  final Widget? trailing;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  const _RecordRow({
+    required this.rowKey,
+    required this.last,
+    required this.color,
+    required this.leading,
+    required this.title,
+    required this.onEdit,
+    required this.onDelete,
+    this.subtitle,
+    this.trailing,
+    this.muted = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Dismissible(
+      key: rowKey,
+      direction: DismissDirection.endToStart,
+      onDismissed: (_) {
+        HapticFeedback.mediumImpact();
+        onDelete();
+      },
+      background: _dismissBg(color: color),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onLongPress: () {
+          HapticFeedback.selectionClick();
+          onEdit();
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          constraints: const BoxConstraints(minHeight: 56),
+          decoration: BoxDecoration(
+              border: last
+                  ? null
+                  : const Border(
+                      bottom: BorderSide(color: AppColors.border, width: 0.5))),
+          child: Opacity(
+            opacity: muted ? 0.55 : 1,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                leading,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            height: 1.25,
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.w400,
+                          )),
+                      if (subtitle != null && subtitle!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(subtitle!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontSize: 11,
+                                  height: 1.25,
+                                  color: AppColors.textSecondary)),
+                        ),
+                    ],
+                  ),
+                ),
+                if (trailing != null) ...[
+                  const SizedBox(width: 10),
+                  trailing!,
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RecordTrailing extends StatelessWidget {
+  final String value;
+  final String label;
+  final Color color;
+  const _RecordTrailing({
+    required this.value,
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.15,
+              color: color,
+            )),
+        Text(label,
+            style: const TextStyle(
+                fontSize: 11, height: 1.2, color: AppColors.textSecondary)),
+      ],
+    );
+  }
+}
 
 // 分区卡片。
 class _SectionCard extends StatelessWidget {
@@ -490,62 +657,20 @@ class _TodoItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Dismissible(
-      key: ValueKey(item.id),
-      direction: DismissDirection.endToStart,
-      onDismissed: (_) {
-        HapticFeedback.mediumImpact();
-        onDelete();
-      },
-      background: _dismissBg(color: _todoAccent),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onLongPress: () {
-          HapticFeedback.selectionClick();
-          onEdit();
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-              border: last
-                  ? null
-                  : const Border(
-                      bottom:
-                          BorderSide(color: AppColors.border, width: 0.5))),
-          child: Row(
-            children: [
-              Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(
-                  color: _todoAccentLight,
-                  borderRadius: BorderRadius.circular(7),
-                ),
-                child: Center(
-                  child: Text('$index',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: _todoAccent,
-                        fontWeight: FontWeight.w600,
-                      )),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  item.text,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-              ),
-              const Icon(Icons.chevron_right, size: 15,
-                  color: AppColors.border),
-            ],
-          ),
-        ),
+    return _RecordRow(
+      rowKey: ValueKey(item.id),
+      last: last,
+      color: _todoAccent,
+      leading: _RecordPill(
+        text: '$index',
+        color: _todoAccent,
+        background: _todoAccentLight,
       ),
+      title: item.text,
+      trailing:
+          const Icon(Icons.chevron_right, size: 15, color: AppColors.border),
+      onEdit: onEdit,
+      onDelete: onDelete,
     );
   }
 }
@@ -567,65 +692,21 @@ class _EventItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Dismissible(
-      key: ValueKey(ev.id),
-      direction: DismissDirection.endToStart,
-      onDismissed: (_) {
-        HapticFeedback.mediumImpact();
-        onDelete();
-      },
-      background: _dismissBg(color: _eventRed),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onLongPress: () {
-          HapticFeedback.selectionClick();
-          onEdit();
-        },
-        child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-            border: last
-                ? null
-                : const Border(
-                    bottom: BorderSide(color: AppColors.border, width: 0.5))),
-        child: Opacity(
-          opacity: past ? 0.55 : 1,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                margin: const EdgeInsets.only(top: 2, right: 10),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: past ? AppColors.bgTab : _eventRedLight,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-                child: Text(ev.date,
-                    style: TextStyle(
-                        fontSize: 11,
-                        color: past ? AppColors.textSecondary : _eventRed)),
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(ev.title,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: AppColors.textPrimary,
-                        )),
-                    if (ev.note.isNotEmpty)
-                      Text(ev.note,
-                          style: const TextStyle(
-                              fontSize: 11, color: AppColors.textSecondary)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+    return _RecordRow(
+      rowKey: ValueKey(ev.id),
+      last: last,
+      color: _eventColor,
+      muted: past,
+      leading: _RecordPill(
+        text: ev.date,
+        color: _eventColor,
+        background: _eventColorLight,
+        muted: past,
       ),
-    ),
+      title: ev.title,
+      subtitle: ev.note,
+      onEdit: onEdit,
+      onDelete: onDelete,
     );
   }
 }
@@ -648,101 +729,24 @@ class _BirthdayItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final days = b.daysUntilBirthdayFrom(today);
-    return Dismissible(
-      key: ValueKey(b.id),
-      direction: DismissDirection.endToStart,
-      onDismissed: (_) {
-        HapticFeedback.mediumImpact();
-        onDelete();
-      },
-      background: _dismissBg(color: AppColors.birthday),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onLongPress: () {
-          HapticFeedback.selectionClick();
-          onEdit();
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-              border: last
-                  ? null
-                  : const Border(
-                      bottom:
-                          BorderSide(color: AppColors.border, width: 0.5))),
-          child: Row(
-            children: [
-              Container(
-                width: 46,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: days <= 7 ? AppColors.birthdayLight : AppColors.bgPage,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.birthdayLight),
-                ),
-                child: Center(
-                  child: days == 0
-                      ? const Text('今天',
-                          style: TextStyle(
-                              fontSize: 13,
-                              color: AppColors.birthday,
-                              fontWeight: FontWeight.w600))
-                      : Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text('$days',
-                                style: const TextStyle(
-                                    fontSize: 15, color: AppColors.birthday)),
-                            const Text('天',
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    color: AppColors.textSecondary)),
-                          ],
-                        ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(b.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            fontSize: 13,
-                            color: AppColors.textPrimary,
-                            fontWeight: FontWeight.w500)),
-                    Text('阳历 ${b.solarDate} · 阴历 ${b.lunarDate}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            fontSize: 11, color: AppColors.textSecondary)),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('${b.ageFrom(today)}岁',
-                      style: const TextStyle(
-                        fontSize: 15,
-                        height: 1.1,
-                        color: AppColors.birthday,
-                      )),
-                  const Text('今年',
-                      style: TextStyle(
-                          fontSize: 11, color: AppColors.textSecondary)),
-                ],
-              ),
-            ],
-          ),
-        ),
+    return _RecordRow(
+      rowKey: ValueKey(b.id),
+      last: last,
+      color: AppColors.birthday,
+      leading: _RecordPill(
+        text: days == 0 ? '今天' : '$days天',
+        color: AppColors.birthday,
+        background: days <= 7 ? AppColors.birthdayLight : AppColors.bgPage,
       ),
+      title: b.name,
+      subtitle: '阳历 ${b.solarDate} · 阴历 ${b.lunarDate}',
+      trailing: _RecordTrailing(
+        value: '${b.ageFrom(today)}岁',
+        label: '今年',
+        color: AppColors.birthday,
+      ),
+      onEdit: onEdit,
+      onDelete: onDelete,
     );
   }
 }
@@ -764,104 +768,25 @@ class _AnniversaryItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const purple = Color(0xFF8B6BAE);
     final days = a.daysUntilAnniversaryFrom(today);
-    return Dismissible(
-      key: ValueKey(a.id),
-      direction: DismissDirection.endToStart,
-      onDismissed: (_) {
-        HapticFeedback.mediumImpact();
-        onDelete();
-      },
-      background: _dismissBg(color: purple),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onLongPress: () {
-          HapticFeedback.selectionClick();
-          onEdit();
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-              border: last
-                  ? null
-                  : const Border(
-                      bottom:
-                          BorderSide(color: AppColors.border, width: 0.5))),
-          child: Row(
-            children: [
-              Container(
-                width: 46,
-                height: 42,
-                decoration: BoxDecoration(
-                  color:
-                      days <= 7 ? const Color(0xFFF0E8FA) : AppColors.bgPage,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFD7C4EE)),
-                ),
-                child: Center(
-                  child: days == 0
-                      ? const Text('今天',
-                          style: TextStyle(
-                              fontSize: 13,
-                              color: purple,
-                              fontWeight: FontWeight.w600))
-                      : Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text('$days',
-                                style:
-                                    const TextStyle(fontSize: 15, color: purple)),
-                            const Text('天',
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    color: AppColors.textSecondary)),
-                          ],
-                        ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(a.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            fontSize: 13,
-                            color: AppColors.textPrimary,
-                            fontWeight: FontWeight.w500)),
-                    Text('阴历 ${a.lunarDate} · 阳历 ${a.solarDate}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            fontSize: 11, color: AppColors.textSecondary)),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('第${a.yearsFrom(today)}年',
-                      style: const TextStyle(
-                        fontSize: 15,
-                        height: 1.1,
-                        color: purple,
-                      )),
-                  const Text('周年',
-                      style: TextStyle(
-                          fontSize: 11, color: AppColors.textSecondary)),
-                ],
-              ),
-            ],
-          ),
-        ),
+    return _RecordRow(
+      rowKey: ValueKey(a.id),
+      last: last,
+      color: _anniversaryColor,
+      leading: _RecordPill(
+        text: days == 0 ? '今天' : '$days天',
+        color: _anniversaryColor,
+        background: days <= 7 ? _anniversaryColorLight : AppColors.bgPage,
       ),
+      title: a.name,
+      subtitle: '阴历 ${a.lunarDate} · 阳历 ${a.solarDate}',
+      trailing: _RecordTrailing(
+        value: '第${a.yearsFrom(today)}年',
+        label: '周年',
+        color: _anniversaryColor,
+      ),
+      onEdit: onEdit,
+      onDelete: onDelete,
     );
   }
 }
@@ -943,7 +868,7 @@ class _EventSheetState extends State<_EventSheet> {
     return _SheetFrame(
       title: editing ? '修改重要事件' : '添加重要事件',
       buttonText: editing ? '保存' : '添加',
-      color: _eventRed,
+      color: _eventColor,
       onPressed: () {
         if (_titleCtrl.text.trim().isEmpty) return;
         widget.onSave(
@@ -955,12 +880,12 @@ class _EventSheetState extends State<_EventSheet> {
         Navigator.pop(context);
       },
       children: [
-        _SheetField(ctrl: _titleCtrl, hint: '事件名称（如：考研报名截止）', color: _eventRed),
+        _SheetField(ctrl: _titleCtrl, hint: '事件名称（如：考研报名截止）', color: _eventColor),
         const SizedBox(height: 10),
         _DateWheelField(
           label: '开始时间',
           value: _startDate,
-          color: _eventRed,
+          color: _eventColor,
           onChanged: (date) => setState(() {
             _startDate = date;
             if (_endDate.isBefore(_startDate)) _endDate = _startDate;
@@ -970,11 +895,11 @@ class _EventSheetState extends State<_EventSheet> {
         _DateWheelField(
           label: '结束时间',
           value: _endDate,
-          color: _eventRed,
+          color: _eventColor,
           onChanged: (date) => setState(() => _endDate = date),
         ),
         const SizedBox(height: 10),
-        _SheetField(ctrl: _noteCtrl, hint: '备注（可选）', color: _eventRed),
+        _SheetField(ctrl: _noteCtrl, hint: '备注（可选）', color: _eventColor),
       ],
     );
   }
@@ -1091,7 +1016,7 @@ class _AnniversarySheetState extends State<_AnniversarySheet> {
     return _SheetFrame(
       title: editing ? '修改纪念日' : '添加纪念日',
       buttonText: editing ? '保存' : '添加',
-      color: const Color(0xFF8B6BAE),
+      color: _anniversaryColor,
       onPressed: () {
         if (_nameCtrl.text.trim().isEmpty) return;
         widget.onSave(_nameCtrl.text.trim(), _solarDate, _lunarDate);
@@ -1099,12 +1024,12 @@ class _AnniversarySheetState extends State<_AnniversarySheet> {
       },
       children: [
         _SheetField(
-            ctrl: _nameCtrl, hint: '纪念日名称', color: const Color(0xFF8B6BAE)),
+            ctrl: _nameCtrl, hint: '纪念日名称', color: _anniversaryColor),
         const SizedBox(height: 10),
         _DateWheelField(
           label: '阳历日期',
           value: _solarDate,
-          color: const Color(0xFF8B6BAE),
+          color: _anniversaryColor,
           yearStart: 1970,
           yearEnd: _today.year,
           onChanged: (date) => setState(() => _solarDate = date),
@@ -1113,7 +1038,7 @@ class _AnniversarySheetState extends State<_AnniversarySheet> {
         _DateWheelField(
           label: '阴历日期',
           value: _lunarDate,
-          color: const Color(0xFF8B6BAE),
+          color: _anniversaryColor,
           yearStart: 1970,
           yearEnd: _today.year,
           onChanged: (date) => setState(() => _lunarDate = date),
