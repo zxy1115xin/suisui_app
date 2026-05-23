@@ -1,3 +1,9 @@
 {
-    "cmake.sourceDirectory": "E:/Myapp/suisui_app/linux"
+  "dart.flutterSdkPath": "F:\\suisui_app\\.tooling\\flutter",
+  "cmake.sourceDirectory": "${workspaceFolder}/linux",
+  "terminal.integrated.env.windows": {
+    "PATH": "F:\\suisui_app\\.tooling\\flutter\\bin;${env:PATH}",
+    "NO_PROXY": "localhost,127.0.0.1,::1",
+    "no_proxy": "localhost,127.0.0.1,::1"
+  }
 }

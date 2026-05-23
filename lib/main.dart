@@ -39,15 +39,18 @@ class SuiSuiApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<int>(
-      valueListenable: AppThemeController.index,
-      builder: (context, _, __) {
+    return AnimatedBuilder(
+      animation: Listenable.merge([AppThemeController.index, AppThemeController.fontScale]),
+      builder: (context, _) {
         final palette = AppThemeController.palette;
+        final scale = AppThemeController.fontScale.value;
         return MaterialApp(
           title: '岁岁',
           debugShowCheckedModeBanner: false,
-          builder: (context, child) => MediaQuery.withClampedTextScaling(
-            maxScaleFactor: 1.12,
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(
+              textScaler: TextScaler.linear(scale),
+            ),
             child: child ?? const SizedBox.shrink(),
           ),
           theme: ThemeData(

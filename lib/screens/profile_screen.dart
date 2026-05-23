@@ -259,6 +259,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ],
           ),
           const SizedBox(height: 16),
+          _SLabel('外观'),
+          _AppearanceCard(theme: theme),
+          const SizedBox(height: 16),
           _SLabel('其他'),
           _Card(
             children: [
@@ -678,6 +681,75 @@ class _NavRow extends StatelessWidget {
           const Icon(Icons.chevron_right, size: 16, color: AppColors.border),
         ],
       ),
+    );
+  }
+}
+
+class _AppearanceCard extends StatefulWidget {
+  final AppThemePalette theme;
+  const _AppearanceCard({required this.theme});
+
+  @override
+  State<_AppearanceCard> createState() => _AppearanceCardState();
+}
+
+class _AppearanceCardState extends State<_AppearanceCard> {
+  @override
+  Widget build(BuildContext context) {
+    final scaleIdx = AppThemeController.fontScaleIndex;
+    return _Card(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.text_fields_outlined, size: 17, color: widget.theme.brand),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text('字体大小',
+                        style: TextStyle(fontSize: 13, color: AppColors.textPrimary)),
+                  ),
+                  Text(fontScaleLabels[scaleIdx],
+                      style: TextStyle(fontSize: 11, color: widget.theme.brand)),
+                ],
+              ),
+              SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  trackHeight: 3,
+                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
+                  showValueIndicator: ShowValueIndicator.never,
+                ),
+                child: Slider(
+                  value: scaleIdx.toDouble(),
+                  min: 0,
+                  max: (fontScaleSteps.length - 1).toDouble(),
+                  divisions: fontScaleSteps.length - 1,
+                  onChanged: (v) {
+                    final idx = v.round();
+                    AppThemeController.selectFontScale(idx);
+                    setState(() {});
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: fontScaleLabels
+                      .map((l) => Text(l,
+                          style: const TextStyle(
+                              fontSize: 10, color: AppColors.textSecondary)))
+                      .toList(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

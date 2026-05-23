@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'dart:math' as math;
 import '../app_colors.dart';
 import '../health_store.dart';
+import '../storage_service.dart';
 import '../weight_store.dart';
 
 // 数据区。
@@ -112,10 +113,7 @@ class _HealthScreenState extends State<HealthScreen> {
 
   // 生理期状态：列表、开始/结束日期以及当前正在编辑的字段。
   bool _showPeriodHistory = false;
-  DateTime get _todayDate {
-    final now = DateTime.now();
-    return DateTime(now.year, now.month, now.day);
-  }
+  DateTime get _todayDate => appToday;
 
   List<_PeriodRecord> get _safePeriodRecords {
     final records = [
@@ -136,18 +134,17 @@ class _HealthScreenState extends State<HealthScreen> {
     return records;
   }
 
-  List<_PeriodRecord> get _sortedPeriodRecords {
-    return [..._safePeriodRecords]..sort((a, b) {
-        final aDate = _parsePeriodDate(a.start) ?? DateTime(1900);
-        final bDate = _parsePeriodDate(b.start) ?? DateTime(1900);
-        return bDate.compareTo(aDate);
-      });
-  }
+  static const _keyFitness = 'health_show_fitness';
+  static const _keyPeriod = 'health_show_period';
+  static const _keyWeight = 'health_show_weight';
 
   @override
   void initState() {
     super.initState();
     _checkinDate = _todayDate;
+    _showFitnessModule = StorageService.getBool(_keyFitness);
+    _showPeriodModule = StorageService.getBool(_keyPeriod);
+    _showWeightModule = StorageService.getBool(_keyWeight);
     HealthStore.periodRecords.addListener(_onPeriodRecordsChanged);
     HealthStore.fitnessRecords.addListener(_onFitnessRecordsChanged);
   }
@@ -275,27 +272,34 @@ class _HealthScreenState extends State<HealthScreen> {
                               label: '健身打卡',
                               icon: Icons.fitness_center,
                               value: _fitnessVisible,
-                              onChanged: (next) => setState(() {
-                                _showFitnessModule = next;
-                                if (!next) {
-                                  _showCheckin = false;
-                                  _showMonthView = false;
-                                }
-                              }),
+                              onChanged: (next) {
+                                StorageService.setBool(_keyFitness, next);
+                                setState(() {
+                                  _showFitnessModule = next;
+                                  if (!next) {
+                                    _showCheckin = false;
+                                    _showMonthView = false;
+                                  }
+                                });
+                              },
                             ),
                             row(
                               label: '生理期',
                               icon: Icons.calendar_month,
                               value: _periodVisible,
-                              onChanged: (next) =>
-                                  setState(() => _showPeriodModule = next),
+                              onChanged: (next) {
+                                StorageService.setBool(_keyPeriod, next);
+                                setState(() => _showPeriodModule = next);
+                              },
                             ),
                             row(
                               label: '体重记录',
                               icon: Icons.monitor_weight_outlined,
                               value: _weightVisible,
-                              onChanged: (next) =>
-                                  setState(() => _showWeightModule = next),
+                              onChanged: (next) {
+                                StorageService.setBool(_keyWeight, next);
+                                setState(() => _showWeightModule = next);
+                              },
                             ),
                           ],
                         ),
@@ -361,7 +365,7 @@ class _HealthScreenState extends State<HealthScreen> {
   }
 
   _PeriodWindow? _periodWindowForMonth(DateTime month) {
-    final sorted = _sortedPeriodRecords;
+    final sorted = _safePeriodRecords;
     final sameMonthRecords = sorted.where((record) {
       final start = _parsePeriodDate(record.start);
       return start != null && _isSameMonth(start, month);
@@ -405,7 +409,7 @@ class _HealthScreenState extends State<HealthScreen> {
   _PeriodWindow? get _currentPeriodWindow => _periodWindowForMonth(_todayDate);
 
   _PeriodRecord? get _currentPeriodRecord {
-    final records = _sortedPeriodRecords.where((record) {
+    final records = _safePeriodRecords.where((record) {
       final start = _parsePeriodDate(record.start);
       return start != null && _isSameMonth(start, _todayDate);
     }).toList();
@@ -436,12 +440,12 @@ class _HealthScreenState extends State<HealthScreen> {
   }
 
   int get _currentCycleLength {
-    final sorted = _sortedPeriodRecords;
+    final sorted = _safePeriodRecords;
     return sorted.isEmpty ? 28 : sorted.first.cycle;
   }
 
   int get _currentPeriodDays {
-    final sorted = _sortedPeriodRecords;
+    final sorted = _safePeriodRecords;
     return sorted.isEmpty ? 5 : math.max(sorted.first.days, 1);
   }
 
@@ -1314,12 +1318,7 @@ class _PeriodHistoryState extends State<_PeriodHistory> {
 
   @override
   Widget build(BuildContext context) {
-    final records = [...(widget.records ?? const <_PeriodRecord>[])]
-      ..sort((a, b) {
-        final aDate = _parsePeriodDate(a.start) ?? DateTime(1900);
-        final bDate = _parsePeriodDate(b.start) ?? DateTime(1900);
-        return bDate.compareTo(aDate);
-      });
+    final records = widget.records ?? const <_PeriodRecord>[];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1456,10 +1455,9 @@ class _PeriodRecordEditor extends StatefulWidget {
 
 class _PeriodRecordEditorState extends State<_PeriodRecordEditor> {
   late DateTime _startDate;
+  late DateTime _endDate;
   late final TextEditingController _cycleCtrl;
   String? _error;
-
-  DateTime get _endDate => _startDate.add(const Duration(days: 5));
 
   @override
   void initState() {
@@ -1468,6 +1466,8 @@ class _PeriodRecordEditorState extends State<_PeriodRecordEditor> {
     final today = DateTime.now();
     _startDate = _parsePeriodDate(record?.start ?? '') ??
         DateTime(today.year, today.month, today.day);
+    _endDate = _parsePeriodDate(record?.end ?? '') ??
+        _startDate.add(const Duration(days: 5));
     _cycleCtrl = TextEditingController(text: '${record?.cycle ?? 28}');
   }
 
@@ -1511,32 +1511,21 @@ class _PeriodRecordEditorState extends State<_PeriodRecordEditor> {
                   label: '开始',
                   value: _startDate,
                   onChanged: (value) => setState(() {
+                    final delta = value.difference(_startDate);
                     _startDate = value;
+                    final shifted = _endDate.add(delta);
+                    _endDate = shifted.isBefore(_startDate) ? _startDate : shifted;
                   }),
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: AppColors.bgPage,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('结束',
-                          style: TextStyle(
-                              fontSize: 11, color: AppColors.textSecondary)),
-                      const SizedBox(height: 2),
-                      Text(_formatPeriodDate(_endDate),
-                          style: const TextStyle(
-                              fontSize: 13, color: AppColors.textPrimary)),
-                    ],
-                  ),
+                child: _PeriodDateField(
+                  label: '结束',
+                  value: _endDate,
+                  onChanged: (value) => setState(() {
+                    _endDate = value.isBefore(_startDate) ? _startDate : value;
+                  }),
                 ),
               ),
             ],

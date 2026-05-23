@@ -25,7 +25,6 @@ String _lunarYearText(DateTime date) {
 // 日历单元格上的业务事件：生日、节气、普通事件、备注和生理期标记都会汇总到这里。
 class _Ev {
   final String? birthday;
-  final String? solarTerm;
   final String? eventName;
   final String? note;
   final bool eventBand;
@@ -39,7 +38,6 @@ class _Ev {
   final bool todoEnd;
   const _Ev(
       {this.birthday,
-      this.solarTerm,
       this.eventName,
       this.note,
       this.eventBand = false,
@@ -60,17 +58,6 @@ class _Hol {
   final bool work;
   const _Hol({this.name, this.rest = false, this.work = false});
 }
-
-// 月视图底部面板和年视图统计使用的示例体重数据。
-const _weightLog = <int, double>{
-  20: 52.1,
-  21: 52.4,
-  22: 52.0,
-  23: 51.8,
-  24: 52.2,
-  25: 52.6,
-  26: 52.4,
-};
 
 DateTime _dateOnly(DateTime date) => DateTime(date.year, date.month, date.day);
 
@@ -270,15 +257,14 @@ const _collapsedMonthRowHeight = 76.0;
 const _expandedMonthRowHeight = 96.0;
 const _rangeBandHeightFactor = 0.45;
 const _calendarHorizontalPadding = 18.0;
+const _selectedDateColor = AppColors.periodLight;
+const _todayDateColor = AppColors.period;
 
 DateTime get _todayDate {
   final now = _beijingNow();
   return DateTime(now.year, now.month, now.day);
 }
 
-int get _startDay => DateTime(_todayDate.year, _todayDate.month, 1).weekday % 7;
-int get _daysCount =>
-    DateUtils.getDaysInMonth(_todayDate.year, _todayDate.month);
 int get _today => _todayDate.day;
 
 String _monthLabel(int month) {
@@ -336,13 +322,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     _todayTimer =
         Timer(tomorrow.difference(now) + const Duration(seconds: 1), () {
       if (!mounted) return;
-      setState(() {
-        final now = _todayDate;
-        if (_displayedMonth.year == now.year &&
-            _displayedMonth.month == now.month) {
-          _selected = _today;
-        }
-      });
+      setState(() {});
       _scheduleTodayRefresh();
     });
   }
@@ -375,6 +355,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
     });
   }
 
+  void _selectDayInDisplayedMonth(int day) {
+    setState(() {
+      _selected = day;
+    });
+  }
+
   void _openDayView(DateTime date) {
     setState(() {
       _displayedMonth = DateTime(date.year, date.month);
@@ -389,6 +375,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
       _displayedMonth = DateTime(year, month);
       _selected = _selected.clamp(1, maxDay).toInt();
       _view = _View.month;
+    });
+  }
+
+  void _goTodayKeepingView() {
+    final today = _todayDate;
+    setState(() {
+      _displayedMonth = DateTime(today.year, today.month);
+      _selected = today.day;
     });
   }
 
@@ -415,6 +409,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       : _view == _View.year
                           ? () => _showYearPicker(context)
                           : null,
+                  onTodayTap: _goTodayKeepingView,
                   onView: (v) => setState(() => _view = v)),
               Expanded(
                 // 根据顶部选择切换不同视图；选中日期通过回调在父组件中保持同步。
@@ -423,7 +418,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       year: _displayedMonth.year,
                       month: _displayedMonth.month,
                       selected: _selected,
-                      onSelect: (d) => setState(() => _selected = d),
+                      onSelect: _selectDayInDisplayedMonth,
                       onSelectDate: _selectDate,
                       onOpenDay: _openDayView,
                       onMonthChanged: _shiftDisplayedMonth,
@@ -443,7 +438,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       year: _displayedMonth.year,
                       month: _displayedMonth.month,
                       selected: _selected,
-                      onSelect: (d) => setState(() => _selected = d),
+                      onSelectDate: _selectDate,
                     ),
                   _View.year => _YearView(
                       year: _displayedMonth.year,
@@ -597,11 +592,13 @@ class _Header extends StatelessWidget {
   final _View view;
   final DateTime displayDate;
   final VoidCallback? onMonthTap;
+  final VoidCallback onTodayTap;
   final ValueChanged<_View> onView;
   const _Header(
       {required this.view,
       required this.displayDate,
       required this.onMonthTap,
+      required this.onTodayTap,
       required this.onView});
 
   @override
@@ -654,6 +651,30 @@ class _Header extends StatelessWidget {
             ),
           ),
           const Spacer(),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onTodayTap,
+            child: Container(
+              width: 32,
+              height: 32,
+              alignment: Alignment.center,
+              margin: const EdgeInsets.only(right: 8),
+              decoration: BoxDecoration(
+                color: _todayDateColor.withAlpha(24),
+                shape: BoxShape.circle,
+                border: Border.all(color: _todayDateColor.withAlpha(120)),
+              ),
+              child: const Text(
+                '今',
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1,
+                  color: _todayDateColor,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
           _SegControl(
             options: const ['月', '周', '日', '年'],
             active: ['月', '周', '日', '年'][_View.values.indexOf(view)],
@@ -822,9 +843,9 @@ class _MonthViewState extends State<_MonthView> {
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: isToday
-                              ? AppColors.brand
+                              ? _todayDateColor
                               : isSelected
-                                  ? AppColors.brandLight
+                                  ? _selectedDateColor
                                   : Colors.transparent,
                         ),
                         child: Center(
@@ -839,8 +860,9 @@ class _MonthViewState extends State<_MonthView> {
                                           ? AppColors.holiday
                                           : AppColors.textPrimary)
                                       : AppColors.textSecondary.withAlpha(130),
-                              fontWeight:
-                                  isToday ? FontWeight.bold : FontWeight.normal,
+                              fontWeight: isToday || isSelected
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
                             ),
                           ),
                         ),
@@ -937,10 +959,8 @@ class _MonthViewState extends State<_MonthView> {
       return LayoutBuilder(
         builder: (context, constraints) {
           final cellWidth = constraints.maxWidth / 7;
-          final bandHeight = rowHeight >= 75
-              ? _collapsedMonthRowHeight * _rangeBandHeightFactor
-              : rowHeight * _rangeBandHeightFactor;
-          final bandTop = rowHeight >= 75
+          final bandHeight = rowHeight * _rangeBandHeightFactor;
+          final bandTop = _mode == _MonthCalendarMode.detail
               ? rowHeight * 0.18 + 17.0 - bandHeight / 2
               : (rowHeight - bandHeight) / 2;
           final bandUnitWidth = math.min(58.0, cellWidth);
@@ -959,13 +979,6 @@ class _MonthViewState extends State<_MonthView> {
                     decoration: BoxDecoration(
                       color: AppColors.event.withAlpha(22),
                       borderRadius: BorderRadius.zero,
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Color(0x0F000000),
-                          blurRadius: 6,
-                          offset: Offset(0, 1),
-                        ),
-                      ],
                     ),
                   ),
                 ),
@@ -981,13 +994,6 @@ class _MonthViewState extends State<_MonthView> {
                     decoration: BoxDecoration(
                       color: AppColors.periodBg.withAlpha(82),
                       borderRadius: BorderRadius.zero,
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Color(0x0F000000),
-                          blurRadius: 6,
-                          offset: Offset(0, 1),
-                        ),
-                      ],
                     ),
                   ),
                 ),
@@ -1238,8 +1244,9 @@ class _DayCell extends StatelessWidget {
     // 单个日期格会根据今天、选中状态、节假日、生理期和事件组合决定颜色与角标。
     final isPeriodStart = ev?.periodStart == true;
     final isPeriodEnd = ev?.periodEnd == true;
-    final isWeekend = ((day + monthStartDay - 1) % 7 == 0);
-    final lunarStr = ev?.solarTerm ?? _lunarDay(DateTime(year, month, day));
+    final colIndex = (day + monthStartDay - 1) % 7;
+    final isWeekend = colIndex == 0 || colIndex == 6;
+    final lunarStr = _lunarDay(DateTime(year, month, day));
     final labels = _labels.take(3).toList();
     final dateColor = today
         ? Colors.white
@@ -1252,9 +1259,7 @@ class _DayCell extends StatelessWidget {
         ? Colors.white70
         : muted
             ? AppColors.textSecondary.withAlpha(120)
-            : ev?.solarTerm != null
-                ? AppColors.event
-                : AppColors.textSecondary;
+            : AppColors.textSecondary;
 
     return GestureDetector(
       onTap: onTap,
@@ -1283,9 +1288,9 @@ class _DayCell extends StatelessWidget {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: today
-                          ? AppColors.brand
+                          ? _todayDateColor
                           : selected
-                              ? AppColors.brandLight
+                              ? _selectedDateColor
                               : Colors.transparent,
                     ),
                     child: Column(
@@ -1296,8 +1301,9 @@ class _DayCell extends StatelessWidget {
                               fontSize: 15,
                               height: 1,
                               color: dateColor,
-                              fontWeight:
-                                  today ? FontWeight.bold : FontWeight.normal,
+                              fontWeight: today || selected
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
                             )),
                         const SizedBox(height: 2),
                         Text(lunarStr,
@@ -1427,177 +1433,6 @@ class _Dot extends StatelessWidget {
   }
 }
 
-// 选中日期的计划列表。
-class _SelectedDayPlans extends StatelessWidget {
-  final int day;
-  const _SelectedDayPlans({required this.day});
-
-  @override
-  Widget build(BuildContext context) {
-    final ev = _eventsForMonth(_todayDate.year, _todayDate.month)[day];
-    final lunarStr = ev?.solarTerm ??
-        _lunarDay(DateTime(_todayDate.year, _todayDate.month, day));
-    final isToday = day == _today;
-
-    return Container(
-      decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: AppColors.border, width: 0.5)),
-      ),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text('$day日',
-                    style: TextStyle(
-                      fontSize: 22,
-                      height: 1,
-                      color: isToday ? AppColors.brand : AppColors.textPrimary,
-                    )),
-                const SizedBox(width: 8),
-                Text(lunarStr,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: ev?.solarTerm != null
-                          ? AppColors.event
-                          : AppColors.textSecondary,
-                    )),
-                const Spacer(),
-                GestureDetector(
-                  onTap: () => _showAddTodoDialog(context),
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: AppColors.brandLight.withAlpha(150),
-                      borderRadius: BorderRadius.circular(99),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.add, size: 14, color: AppColors.brand),
-                        SizedBox(width: 3),
-                        Text('待办事项',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: AppColors.brand,
-                              fontWeight: FontWeight.w500,
-                            )),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            ValueListenableBuilder<List<TodoItem>>(
-              valueListenable: TodoStore.items,
-              builder: (context, todos, _) {
-                if (todos.isEmpty) {
-                  return const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    child: Text('暂无待办',
-                        style:
-                            TextStyle(fontSize: 13, color: AppColors.border)),
-                  );
-                }
-                return Column(
-                  children: [
-                    for (var i = 0; i < todos.length; i++)
-                      _TodoPlanRow(
-                        index: i + 1,
-                        todo: todos[i],
-                        onEdit: (todo) => _showTodoDialog(context, todo: todo),
-                        onDelete: (todo) => TodoStore.remove(todo.id),
-                      ),
-                  ],
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _showAddTodoDialog(BuildContext context) =>
-      _showTodoDialog(context);
-
-  Future<void> _showTodoDialog(BuildContext context, {TodoItem? todo}) async {
-    final controller = TextEditingController(text: todo?.text ?? '');
-    final editing = todo != null;
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: Colors.white,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Text(editing ? '修改待办事项' : '添加待办事项',
-              style: const TextStyle(
-                fontSize: 15,
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.w600,
-              )),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            decoration: InputDecoration(
-              hintText: '待办内容，例如：5月1日-5月3日 出差',
-              hintStyle:
-                  const TextStyle(fontSize: 13, color: AppColors.textSecondary),
-              filled: true,
-              fillColor: AppColors.bgPage,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: AppColors.border),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: AppColors.border),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: const BorderSide(color: AppColors.brand),
-              ),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              isDense: true,
-            ),
-            style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
-            onSubmitted: (_) => Navigator.pop(context, true),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('取消',
-                  style: TextStyle(color: AppColors.textSecondary)),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: Text(editing ? '保存' : '添加',
-                  style: const TextStyle(
-                    color: AppColors.brand,
-                    fontWeight: FontWeight.w600,
-                  )),
-            ),
-          ],
-        );
-      },
-    );
-    if (saved == true) {
-      if (editing) {
-        TodoStore.update(todo.id, controller.text);
-      } else {
-        TodoStore.add(controller.text);
-      }
-    }
-    controller.dispose();
-  }
-}
-
 class _TodoPlanRow extends StatelessWidget {
   final int index;
   final TodoItem todo;
@@ -1666,8 +1501,8 @@ class _TodoPlanRow extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      fontSize: 15,
-                      height: 1.2,
+                      fontSize: 13,
+                      height: 1.25,
                       color: AppColors.textPrimary,
                       fontWeight: FontWeight.w400,
                     )),
@@ -1873,8 +1708,7 @@ class _TodoInfoCard extends StatelessWidget {
         builder: (context, todos, _) {
           if (todos.isEmpty) {
             return const Text('暂无待办',
-                style: TextStyle(
-                    fontSize: 15, height: 1.2, color: AppColors.border));
+                style: TextStyle(fontSize: 13, color: AppColors.textSecondary));
           }
           return ListView.builder(
             shrinkWrap: true,
@@ -1914,13 +1748,8 @@ class _UpcomingInfoCard extends StatelessWidget {
         child: const Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.add, size: 16, color: AppColors.brand),
-            SizedBox(width: 2),
-            Text('添加',
-                style: TextStyle(
-                    fontSize: 13,
-                    color: AppColors.brand,
-                    fontWeight: FontWeight.w600)),
+            Icon(Icons.add, size: 14, color: AppColors.brand),
+            Text('添加', style: TextStyle(fontSize: 11, color: AppColors.brand)),
           ],
         ),
       ),
@@ -1928,13 +1757,12 @@ class _UpcomingInfoCard extends StatelessWidget {
         valueListenable: ImportantDateStore.version,
         builder: (context, _, __) {
           final items = ImportantDateStore.upcomingWithinMonths(
-            today: _todayDate,
+            today: dateOnly(selectedDate),
             months: 2,
           );
           if (items.isEmpty) {
             return const Text('暂无重要时间',
-                style: TextStyle(
-                    fontSize: 15, height: 1.2, color: AppColors.border));
+                style: TextStyle(fontSize: 13, color: AppColors.textSecondary));
           }
           return ListView.builder(
             shrinkWrap: true,
@@ -2037,8 +1865,8 @@ class _UpcomingImportantRow extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                            fontSize: 15,
-                            height: 1.2,
+                            fontSize: 13,
+                            height: 1.25,
                             color: AppColors.textPrimary,
                             fontWeight: FontWeight.w400)),
                     const SizedBox(height: 3),
@@ -2046,16 +1874,14 @@ class _UpcomingImportantRow extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                            fontSize: 13,
-                            height: 1.2,
+                            fontSize: 11,
+                            height: 1.25,
                             color: AppColors.textSecondary)),
                   ],
                 ),
               ),
               const SizedBox(width: 8),
-              Text(dayText,
-                  style:
-                      TextStyle(fontSize: 15, height: 1.2, color: item.color)),
+              Text(dayText, style: TextStyle(fontSize: 13, color: item.color)),
               const SizedBox(width: 4),
             ],
           ),
@@ -2553,7 +2379,7 @@ class _InfoPanel extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(
@@ -2567,10 +2393,9 @@ class _InfoPanel extends StatelessWidget {
             children: [
               Text(title,
                   style: const TextStyle(
-                      fontSize: 15,
-                      height: 1.2,
+                      fontSize: 13,
                       color: AppColors.textPrimary,
-                      fontWeight: FontWeight.w600)),
+                      fontWeight: FontWeight.w500)),
               const Spacer(),
               if (action != null) action!,
             ],
@@ -2667,9 +2492,9 @@ class _WeekView extends StatelessWidget {
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
                                 color: isToday
-                                    ? AppColors.brand
+                                    ? _todayDateColor
                                     : isSelected
-                                        ? AppColors.brandLight
+                                        ? _selectedDateColor
                                         : Colors.transparent,
                               ),
                               child: Center(
@@ -2685,7 +2510,7 @@ class _WeekView extends StatelessWidget {
                                                 : AppColors.textPrimary)
                                             : AppColors.textSecondary
                                                 .withAlpha(130),
-                                    fontWeight: isToday
+                                    fontWeight: isToday || isSelected
                                         ? FontWeight.bold
                                         : FontWeight.normal,
                                   ),
@@ -2729,139 +2554,143 @@ class _WeekView extends StatelessWidget {
 
 String _lunarDateText(DateTime date) {
   final lunar = Solar.fromYmd(date.year, date.month, date.day).getLunar();
-  return '农历${lunar.getMonthInChinese()}${lunar.getDayInChinese()}';
+  return '农历${lunar.getMonthInChinese()}月${lunar.getDayInChinese()}';
 }
 
-String _seasonStemText(DateTime date, _Ev? ev) {
-  final term = ev?.solarTerm ?? _seasonNameForMonth(date.month);
-  final termStart = switch (term) {
-    '夏至' => DateTime(date.year, date.month, 24),
-    '春分' => DateTime(date.year, date.month, 20),
-    '秋分' => DateTime(date.year, date.month, 23),
-    '冬至' => DateTime(date.year, date.month, 22),
-    _ => DateTime(date.year, date.month, 4),
-  };
-  final termDay = (date.difference(termStart).inDays + 1).clamp(1, 15).toInt();
-  return '$term · 第$termDay 日 | 甲子日 · 朔望';
-}
-
-String _seasonNameForMonth(int month) {
-  if (month == 3 || month == 4) return '春分';
-  if (month == 5 || month == 6) return '夏至';
-  if (month >= 7 && month <= 9) return '秋分';
-  if (month >= 10 && month <= 12) return '冬至';
-  return '立春';
-}
-
-class _DayView extends StatelessWidget {
+class _DayView extends StatefulWidget {
   final int year;
   final int month;
   final int selected;
-  final ValueChanged<int> onSelect;
+  final ValueChanged<DateTime> onSelectDate;
   const _DayView({
     required this.year,
     required this.month,
     required this.selected,
-    required this.onSelect,
+    required this.onSelectDate,
   });
 
   @override
+  State<_DayView> createState() => _DayViewState();
+}
+
+class _DayViewState extends State<_DayView> {
+  late DateTime _date;
+
+  @override
+  void initState() {
+    super.initState();
+    _date = DateTime(widget.year, widget.month, widget.selected);
+  }
+
+  @override
+  void didUpdateWidget(covariant _DayView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.year == widget.year &&
+        oldWidget.month == widget.month &&
+        oldWidget.selected == widget.selected) {
+      return;
+    }
+    _date = DateTime(widget.year, widget.month, widget.selected);
+  }
+
+  void _navigate(DateTime newDate) {
+    widget.onSelectDate(newDate);
+    setState(() => _date = newDate);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // 日视图聚焦选中日期，顶部可前后切换日期，下方展示全天时间轴。
-    final date = DateTime(year, month, selected);
-    final lunarStr = _lunarDateText(date);
-    final dayOfWeek = date.weekday % 7;
+    final lunarStr = _lunarDateText(_date);
+    final dayOfWeek = _date.weekday % 7;
     const weekNames = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
-    final daysCount = DateUtils.getDaysInMonth(year, month);
 
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-          child: Column(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 20,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFFBF4),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.border),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: AppColors.shadow,
-                      blurRadius: 12,
-                      offset: Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    _DayNavButton(
-                      icon: Icons.chevron_left,
-                      enabled: selected > 1,
-                      onPressed: () => onSelect(selected - 1),
-                    ),
-                    const SizedBox(width: 18),
-                    SizedBox(
-                      width: 118,
-                      child: Center(
-                        child: Text('$selected',
-                            style: const TextStyle(
-                              fontSize: 78,
-                              height: 0.9,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.holiday,
-                            )),
+              _DayNavButton(
+                icon: Icons.chevron_left,
+                enabled: true,
+                onPressed: () =>
+                    _navigate(_date.subtract(const Duration(days: 1))),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.border),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: AppColors.shadow,
+                        blurRadius: 4,
+                        offset: Offset(0, 1),
                       ),
-                    ),
-                    Container(
-                      width: 1,
-                      height: 72,
-                      color: AppColors.border,
-                    ),
-                    const SizedBox(width: 22),
-                    Expanded(
-                      child: Column(
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(
+                        '${_date.day}',
+                        style: const TextStyle(
+                          fontSize: 50,
+                          height: 1.0,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.holiday,
+                        ),
+                      ),
+                      Container(
+                        width: 1,
+                        height: 44,
+                        margin: const EdgeInsets.symmetric(horizontal: 18),
+                        color: AppColors.border,
+                      ),
+                      Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(weekNames[dayOfWeek],
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.textPrimary,
-                              )),
-                          const SizedBox(height: 10),
-                          Text(lunarStr,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 15,
-                                color: AppColors.textSecondary,
-                              )),
+                          Text(
+                            weekNames[dayOfWeek],
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            lunarStr,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
                         ],
                       ),
-                    ),
-                    const SizedBox(width: 18),
-                    _DayNavButton(
-                      icon: Icons.chevron_right,
-                      enabled: selected < daysCount,
-                      onPressed: () => onSelect(selected + 1),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
+              ),
+              const SizedBox(width: 8),
+              _DayNavButton(
+                icon: Icons.chevron_right,
+                enabled: true,
+                onPressed: () => _navigate(_date.add(const Duration(days: 1))),
               ),
             ],
           ),
         ),
         Expanded(
           child: _CalendarInfoPanels(
-            selectedDate: DateTime(year, month, selected),
+            selectedDate: _date,
           ),
         ),
       ],
@@ -3073,172 +2902,218 @@ class _MiniMonth extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         onDoubleTap: onDoubleTap,
         child: Container(
-          padding: const EdgeInsets.fromLTRB(10, 7, 10, 8),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: isCurrent ? AppColors.brandLight : Colors.white,
-              width: 1,
+              color:
+                  isCurrent ? AppColors.brand.withAlpha(70) : AppColors.border,
+              width: isCurrent ? 1.5 : 0.5,
             ),
-            boxShadow: const [
+            boxShadow: [
               BoxShadow(
-                color: AppColors.shadow,
-                blurRadius: 10,
-                offset: Offset(0, 4),
+                color: isCurrent
+                    ? AppColors.brand.withAlpha(22)
+                    : AppColors.shadow,
+                blurRadius: isCurrent ? 16 : 8,
+                offset: const Offset(0, 3),
               ),
             ],
           ),
-          child: Column(
-            children: [
-              Text(data.name,
-                  style: TextStyle(
-                    fontSize: 15,
-                    height: 1,
-                    fontWeight: FontWeight.w700,
-                    color: isCurrent ? AppColors.brand : AppColors.textPrimary,
-                  )),
-              const SizedBox(height: 6),
-              Row(
-                children: List.generate(7, (index) {
-                  final weekend = index == 5 || index == 6;
-                  return Expanded(
-                    child: Center(
-                      child: Text(
-                        _yearWeekLabels[index],
-                        style: TextStyle(
-                          fontSize: 11,
-                          height: 1,
-                          color: weekend
-                              ? AppColors.brand
-                              : AppColors.textSecondary,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(15),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (isCurrent) Container(height: 3, color: AppColors.brand),
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(10, isCurrent ? 5 : 7, 10, 8),
+                    child: Column(
+                      children: [
+                        Text(data.name,
+                            style: TextStyle(
+                              fontSize: 15,
+                              height: 1,
+                              fontWeight: FontWeight.w700,
+                              color: isCurrent
+                                  ? AppColors.brand
+                                  : AppColors.textPrimary,
+                            )),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: List.generate(7, (index) {
+                            final weekend = index == 5 || index == 6;
+                            return Expanded(
+                              child: Center(
+                                child: Text(
+                                  _yearWeekLabels[index],
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    height: 1,
+                                    color: weekend
+                                        ? AppColors.holiday
+                                        : AppColors.textSecondary,
+                                  ),
+                                ),
+                              ),
+                            );
+                          }),
                         ),
-                      ),
-                    ),
-                  );
-                }),
-              ),
-              const SizedBox(height: 6),
-              Expanded(
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final cellHeight = constraints.maxHeight / 6;
-                    final stackHeight = math.min(26.0, cellHeight);
-                    final numberSize = math.max(17.0, stackHeight - 5);
-                    final numberFontSize = stackHeight < 24 ? 11.0 : 13.0;
+                        const SizedBox(height: 6),
+                        Expanded(
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              final cellHeight = constraints.maxHeight / 6;
+                              final stackHeight = math.min(26.0, cellHeight);
+                              final numberSize =
+                                  math.max(17.0, stackHeight - 5);
+                              final numberFontSize =
+                                  stackHeight < 24 ? 11.0 : 13.0;
 
-                    return Column(
-                      children: List.generate(6, (rowIndex) {
-                        final row = cells.skip(rowIndex * 7).take(7).toList();
-                        return Expanded(
-                          child: Row(
-                            children: List.generate(7, (columnIndex) {
-                              final d = row[columnIndex];
-                              if (d == null) {
-                                return const Expanded(child: SizedBox());
-                              }
-                              final types =
-                                  evMap[d] ?? const <_YearEventType>{};
-                              final leftDay = columnIndex == 0
-                                  ? null
-                                  : row[columnIndex - 1];
-                              final rightDay = columnIndex == 6
-                                  ? null
-                                  : row[columnIndex + 1];
-                              final periodSelected =
-                                  types.contains(_YearEventType.period);
-                              final eventSelected =
-                                  types.contains(_YearEventType.event);
-                              final periodLeft = periodSelected &&
-                                  _hasYearEvent(
-                                      evMap, leftDay, _YearEventType.period);
-                              final periodRight = periodSelected &&
-                                  _hasYearEvent(
-                                      evMap, rightDay, _YearEventType.period);
-                              final eventLeft = eventSelected &&
-                                  _hasYearEvent(
-                                      evMap, leftDay, _YearEventType.event);
-                              final eventRight = eventSelected &&
-                                  _hasYearEvent(
-                                      evMap, rightDay, _YearEventType.event);
-                              final isToday = isCurrent && d == _today;
-                              final weekend =
-                                  columnIndex == 5 || columnIndex == 6;
-                              final textColor = isToday
-                                  ? Colors.white
-                                  : types.contains(_YearEventType.birthday)
-                                      ? AppColors.birthday
-                                      : types.contains(_YearEventType.holiday)
-                                          ? AppColors.holiday
-                                          : weekend
-                                              ? AppColors.brand
-                                              : AppColors.textPrimary;
-                              return Expanded(
-                                child: Center(
-                                  child: SizedBox(
-                                    height: stackHeight,
-                                    child: Stack(
-                                      clipBehavior: Clip.none,
-                                      alignment: Alignment.center,
-                                      children: [
-                                        if (periodSelected)
-                                          _YearRangeBand(
-                                            color: AppColors.periodBg,
-                                            extendLeft: periodLeft,
-                                            extendRight: periodRight,
-                                          ),
-                                        if (eventSelected)
-                                          _YearRangeBand(
-                                            color: AppColors.eventLight
-                                                .withAlpha(120),
-                                            extendLeft: eventLeft,
-                                            extendRight: eventRight,
-                                          ),
-                                        Align(
-                                          alignment: Alignment.topCenter,
-                                          child: Container(
-                                            width: 23,
-                                            height: numberSize,
-                                            decoration: BoxDecoration(
-                                              shape: BoxShape.circle,
-                                              color: isToday
-                                                  ? AppColors.brand
-                                                  : Colors.transparent,
-                                            ),
-                                            child: Center(
-                                              child: Text(
-                                                '$d',
-                                                style: TextStyle(
-                                                  fontSize: numberFontSize,
-                                                  height: 1,
-                                                  color: textColor,
-                                                  fontWeight: isToday ||
-                                                          types.isNotEmpty
-                                                      ? FontWeight.w700
-                                                      : FontWeight.w500,
-                                                ),
+                              return Column(
+                                children: List.generate(6, (rowIndex) {
+                                  final row =
+                                      cells.skip(rowIndex * 7).take(7).toList();
+                                  return Expanded(
+                                    child: Row(
+                                      children: List.generate(7, (columnIndex) {
+                                        final d = row[columnIndex];
+                                        if (d == null) {
+                                          return const Expanded(
+                                              child: SizedBox());
+                                        }
+                                        final types = evMap[d] ??
+                                            const <_YearEventType>{};
+                                        final leftDay = columnIndex == 0
+                                            ? null
+                                            : row[columnIndex - 1];
+                                        final rightDay = columnIndex == 6
+                                            ? null
+                                            : row[columnIndex + 1];
+                                        final periodSelected = types
+                                            .contains(_YearEventType.period);
+                                        final eventSelected = types
+                                            .contains(_YearEventType.event);
+                                        final periodLeft = periodSelected &&
+                                            _hasYearEvent(evMap, leftDay,
+                                                _YearEventType.period);
+                                        final periodRight = periodSelected &&
+                                            _hasYearEvent(evMap, rightDay,
+                                                _YearEventType.period);
+                                        final eventLeft = eventSelected &&
+                                            _hasYearEvent(evMap, leftDay,
+                                                _YearEventType.event);
+                                        final eventRight = eventSelected &&
+                                            _hasYearEvent(evMap, rightDay,
+                                                _YearEventType.event);
+                                        final isToday =
+                                            isCurrent && d == _today;
+                                        final weekend = columnIndex == 5 ||
+                                            columnIndex == 6;
+                                        final textColor = isToday
+                                            ? Colors.white
+                                            : types.contains(
+                                                    _YearEventType.birthday)
+                                                ? AppColors.birthday
+                                                : types.contains(
+                                                        _YearEventType.holiday)
+                                                    ? AppColors.holiday
+                                                    : weekend
+                                                        ? AppColors.holiday
+                                                        : AppColors.textPrimary;
+                                        return Expanded(
+                                          child: Center(
+                                            child: SizedBox(
+                                              height: stackHeight,
+                                              child: Stack(
+                                                clipBehavior: Clip.none,
+                                                alignment: Alignment.center,
+                                                children: [
+                                                  if (periodSelected)
+                                                    _YearRangeBand(
+                                                      color: AppColors.periodBg,
+                                                      extendLeft: periodLeft,
+                                                      extendRight: periodRight,
+                                                    ),
+                                                  if (eventSelected)
+                                                    _YearRangeBand(
+                                                      color: AppColors
+                                                          .eventLight
+                                                          .withAlpha(120),
+                                                      extendLeft: eventLeft,
+                                                      extendRight: eventRight,
+                                                    ),
+                                                  Align(
+                                                    alignment:
+                                                        Alignment.topCenter,
+                                                    child: Container(
+                                                      width: 23,
+                                                      height: numberSize,
+                                                      decoration: BoxDecoration(
+                                                        shape: BoxShape.circle,
+                                                        color: isToday
+                                                            ? _todayDateColor
+                                                            : Colors
+                                                                .transparent,
+                                                        boxShadow: isToday
+                                                            ? [
+                                                                BoxShadow(
+                                                                  color: _todayDateColor
+                                                                      .withAlpha(
+                                                                          80),
+                                                                  blurRadius: 8,
+                                                                  spreadRadius:
+                                                                      0,
+                                                                )
+                                                              ]
+                                                            : null,
+                                                      ),
+                                                      child: Center(
+                                                        child: Text(
+                                                          '$d',
+                                                          style: TextStyle(
+                                                            fontSize:
+                                                                numberFontSize,
+                                                            height: 1,
+                                                            color: textColor,
+                                                            fontWeight: isToday ||
+                                                                    types
+                                                                        .isNotEmpty
+                                                                ? FontWeight
+                                                                    .w700
+                                                                : FontWeight
+                                                                    .w500,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  Align(
+                                                    alignment:
+                                                        Alignment.bottomCenter,
+                                                    child: _YearEventDots(
+                                                        types: types),
+                                                  ),
+                                                ],
                                               ),
                                             ),
                                           ),
-                                        ),
-                                        Align(
-                                          alignment: Alignment.bottomCenter,
-                                          child: _YearEventDots(types: types),
-                                        ),
-                                      ],
+                                        );
+                                      }),
                                     ),
-                                  ),
-                                ),
+                                  );
+                                }),
                               );
-                            }),
+                            },
                           ),
-                        );
-                      }),
-                    );
-                  },
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -3349,60 +3224,77 @@ class _SyncedYearStatsPanel extends StatelessWidget {
 
   const _SyncedYearStatsPanel({required this.year});
 
+  String _formatFitnessMinutes(int minutes) {
+    if (minutes <= 0) return '未记录运动时长';
+    if (minutes < 60) return '共 $minutes 分钟';
+    final hours = minutes / 60;
+    if (minutes % 60 == 0) return '共 ${hours.toInt()} 小时';
+    return '共 ${hours.toStringAsFixed(1)} 小时';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final currentWeight = WeightStore.todayWeight;
-    final yearlyWeights = WeightStore.weights.value.entries
-        .where((entry) => WeightStore.dateFromKey(entry.key).year == year)
-        .map((entry) => entry.value)
-        .toList();
-    final minWeight = yearlyWeights.isEmpty
-        ? currentWeight
-        : yearlyWeights.reduce((a, b) => a < b ? a : b);
-    final fitnessDays = HealthStore.fitnessDaysInYear(year);
+    return AnimatedBuilder(
+      animation: Listenable.merge([
+        WeightStore.weights,
+        HealthStore.fitnessRecords,
+      ]),
+      builder: (context, _) {
+        final currentWeight = WeightStore.weightForDate(appToday);
+        final yearlyWeights = WeightStore.weights.value.entries
+            .where((entry) => WeightStore.dateFromKey(entry.key).year == year)
+            .map((entry) => entry.value)
+            .toList();
+        final minWeight = yearlyWeights.isEmpty
+            ? currentWeight
+            : yearlyWeights.reduce((a, b) => a < b ? a : b);
+        final fitnessDays = HealthStore.fitnessDaysInYear(year);
+        final fitnessMinutes = HealthStore.fitnessMinutesInYear(year);
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
-        boxShadow: const [
-          BoxShadow(
-            color: AppColors.shadow,
-            blurRadius: 10,
-            offset: Offset(0, 4),
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.border),
+            boxShadow: const [
+              BoxShadow(
+                color: AppColors.shadow,
+                blurRadius: 10,
+                offset: Offset(0, 4),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _StatCard(
-              icon: '📈',
-              value: currentWeight.toStringAsFixed(1),
-              label: '当前体重 kg',
-              color: AppColors.brand,
-              sub: '全年最低 ${minWeight.toStringAsFixed(1)} kg',
-            ),
+          child: Row(
+            children: [
+              Expanded(
+                child: _StatCard(
+                  icon: '📈',
+                  value: currentWeight.toStringAsFixed(1),
+                  label: '当前体重 kg',
+                  color: AppColors.brand,
+                  sub: '全年最低 ${minWeight.toStringAsFixed(1)} kg',
+                ),
+              ),
+              const SizedBox(width: 10),
+              const SizedBox(
+                height: 42,
+                child: VerticalDivider(width: 1, color: AppColors.border),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _StatCard(
+                  icon: '🔥',
+                  value: '$fitnessDays天',
+                  label: '健身打卡',
+                  color: AppColors.event,
+                  sub: _formatFitnessMinutes(fitnessMinutes),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 10),
-          const SizedBox(
-            height: 42,
-            child: VerticalDivider(width: 1, color: AppColors.border),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: _StatCard(
-              icon: '🔥',
-              value: '$fitnessDays天',
-              label: '健身打卡',
-              color: AppColors.event,
-              sub: '本年目标 150天',
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

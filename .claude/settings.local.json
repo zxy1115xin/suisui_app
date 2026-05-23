@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(& \"F:\\\\suisui_app\\\\.tooling\\\\flutter\\\\bin\\\\flutter.bat\" config --list 2>&1)"
+    ]
+  }
+}

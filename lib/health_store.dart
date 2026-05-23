@@ -177,6 +177,12 @@ class HealthStore {
         .fold(0, (sum, r) => sum + r.minutes);
   }
 
+  static int fitnessMinutesInYear(int year) {
+    return fitnessRecords.value.values
+        .where((r) => r.date.year == year)
+        .fold(0, (sum, r) => sum + r.minutes);
+  }
+
   static bool isPeriodDay(DateTime date) {
     final target = healthDateOnly(date);
     for (final rec in periodRecords.value) {

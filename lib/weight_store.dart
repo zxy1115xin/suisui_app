@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'storage_service.dart';
 
 DateTime get appToday {
-  final now = DateTime.now();
+  final now = DateTime.now().toUtc().add(const Duration(hours: 8));
   return DateTime(now.year, now.month, now.day);
 }
 

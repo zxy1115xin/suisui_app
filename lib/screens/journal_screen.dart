@@ -6,11 +6,9 @@ import 'package:flutter/services.dart';
 import '../app_colors.dart';
 import '../important_date_store.dart';
 import '../todo_store.dart';
+import '../weight_store.dart';
 
-DateTime get _today {
-  final now = DateTime.now();
-  return DateTime(now.year, now.month, now.day);
-}
+DateTime get _today => appToday;
 
 const _todoAccent = AppColors.brand;
 const _todoAccentLight = AppColors.brandLight;
