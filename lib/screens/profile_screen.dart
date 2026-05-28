@@ -14,8 +14,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   int get _age {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final today = appToday;
     var age = today.year - ProfileStore.birthday.year;
     final birthdayThisYear = DateTime(
         today.year, ProfileStore.birthday.month, ProfileStore.birthday.day);
@@ -335,7 +334,7 @@ class _ProfileEditorState extends State<_ProfileEditor> {
 
   Future<void> _showBirthdayPicker() async {
     const minYear = 1930;
-    const maxYear = 2026;
+    final maxYear = appToday.year;
     var year = _birthday.year.clamp(minYear, maxYear).toInt();
     var month = _birthday.month;
     var day =

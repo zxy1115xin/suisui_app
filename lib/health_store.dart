@@ -221,7 +221,7 @@ class HealthStore {
     final ns = healthDateOnly(start);
     final ne = healthDateOnly(end);
     final record = PeriodRecordData(
-      id: id ?? DateTime.now().millisecondsSinceEpoch,
+      id: id ?? DateTime.now().microsecondsSinceEpoch,
       start: ne.isBefore(ns) ? ne : ns,
       end: ne.isBefore(ns) ? ns : ne,
       cycle: cycle,

@@ -55,10 +55,10 @@ class _JournalScreenState extends State<JournalScreen>
 
   void _scheduleTodayRefresh() {
     _todayTimer?.cancel();
-    final now = DateTime.now();
-    final tomorrow = DateTime(now.year, now.month, now.day + 1);
-    _todayTimer =
-        Timer(tomorrow.difference(now) + const Duration(seconds: 1), () {
+    final now = DateTime.now().toUtc().add(const Duration(hours: 8));
+    final tomorrowBeijing = DateTime(now.year, now.month, now.day + 1);
+    final delay = tomorrowBeijing.difference(now) + const Duration(seconds: 1);
+    _todayTimer = Timer(delay, () {
       if (!mounted) return;
       setState(() {});
       _scheduleTodayRefresh();
@@ -96,15 +96,22 @@ class _JournalScreenState extends State<JournalScreen>
               child: Align(
                 alignment: Alignment.topCenter,
                 child: Padding(
-                  padding: EdgeInsets.fromLTRB(16, top, 16, 20),
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    top,
+                    16,
+                    MediaQuery.of(dialogContext).viewInsets.bottom + 20,
+                  ),
                   child: Material(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(18),
                     child: ConstrainedBox(
                       constraints: BoxConstraints(
                         maxWidth: 360,
-                        maxHeight:
-                            MediaQuery.of(dialogContext).size.height - top - 40,
+                        maxHeight: MediaQuery.of(dialogContext).size.height
+                            - top
+                            - MediaQuery.of(dialogContext).viewInsets.bottom
+                            - 40,
                       ),
                       child: child,
                     ),
@@ -483,7 +490,7 @@ class _RecordRow extends StatelessWidget {
       background: _dismissBg(color: color),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onLongPress: () {
+        onTap: () {
           HapticFeedback.selectionClick();
           onEdit();
         },
@@ -1063,11 +1070,7 @@ class _SheetFrame extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(
-          left: 20,
-          right: 20,
-          top: 20,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 20),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,

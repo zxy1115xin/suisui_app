@@ -26,9 +26,12 @@ class WeightStore {
   static Future<void> load() async {
     final raw = StorageService.getString(_key);
     if (raw == null) {
+      final today = appToday;
+      final daysInMonth = DateTime(today.year, today.month + 1, 0).day;
       weights.value = {
         for (final e in _initialWeightHistory.entries)
-          dateKey(DateTime(2026, 4, e.key)): e.value,
+          if (e.key <= daysInMonth)
+            dateKey(DateTime(today.year, today.month, e.key)): e.value,
       };
       _save();
       return;

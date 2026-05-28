@@ -55,7 +55,7 @@ class TodoStore {
     if (value.isEmpty) return;
     items.value = [
       ...items.value,
-      TodoItem(id: DateTime.now().millisecondsSinceEpoch, text: value),
+      TodoItem(id: DateTime.now().microsecondsSinceEpoch, text: value),
     ];
     _save();
   }

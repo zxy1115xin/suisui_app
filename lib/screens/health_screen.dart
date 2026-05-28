@@ -8,7 +8,7 @@ import '../storage_service.dart';
 import '../weight_store.dart';
 
 // 数据区。
-const _fitnessTypes = ['跑步', '瑜伽', '力量', '骑行', '游泳', '走路'];
+const _fitnessTypes = ['跑步', '瑜伽', '力量', '骑行', '游泳', '其他'];
 const _healthAccent = Color(0xFFC8765A);
 const _healthAccentLight = Color(0xFFF0D5C8);
 
@@ -79,20 +79,21 @@ class _HealthScreenState extends State<HealthScreen> {
   bool get _periodVisible => _showPeriodModule ?? true;
   bool get _weightVisible => _showWeightModule ?? true;
 
-  // 控制健身卡片中“打卡面板”和“周/月视图”的展开状态。
-  bool _showCheckin = false;
   bool _showMonthView = false;
-  DateTime _checkinDate = appToday;
-  String _selFitness = '跑步';
-  double _hours = 1.0;
+  double _fitnessDragOffset = 0;
 
   int get _calStartDay =>
       DateTime(_todayDate.year, _todayDate.month, 1).weekday % 7;
   int get _calDays =>
       DateUtils.getDaysInMonth(_todayDate.year, _todayDate.month);
   int get _todayDay => _todayDate.day;
-  List<DateTime> get _recent7Dates =>
-      List.generate(7, (i) => _todayDate.subtract(Duration(days: 6 - i)));
+
+  // 本周日起的 7 天（周日在最左）
+  List<DateTime> get _recent7Dates {
+    final daysSinceSunday = _todayDate.weekday % 7;
+    final sunday = _todayDate.subtract(Duration(days: daysSinceSunday));
+    return List.generate(7, (i) => sunday.add(Duration(days: i)));
+  }
 
   Map<int, List<dynamic>> get _monthLog {
     final records =
@@ -141,7 +142,6 @@ class _HealthScreenState extends State<HealthScreen> {
   @override
   void initState() {
     super.initState();
-    _checkinDate = _todayDate;
     _showFitnessModule = StorageService.getBool(_keyFitness);
     _showPeriodModule = StorageService.getBool(_keyPeriod);
     _showWeightModule = StorageService.getBool(_keyWeight);
@@ -276,10 +276,7 @@ class _HealthScreenState extends State<HealthScreen> {
                                 StorageService.setBool(_keyFitness, next);
                                 setState(() {
                                   _showFitnessModule = next;
-                                  if (!next) {
-                                    _showCheckin = false;
-                                    _showMonthView = false;
-                                  }
+                                  if (!next) _showMonthView = false;
                                 });
                               },
                             ),
@@ -317,44 +314,49 @@ class _HealthScreenState extends State<HealthScreen> {
 
   void _cancelCheckinForDate(DateTime date) {
     HealthStore.removeFitnessRecord(date);
-    setState(() {
-      if (DateUtils.isSameDay(_checkinDate, date)) {
-        _showCheckin = false;
-      }
-    });
+    setState(() {});
   }
 
-  void _toggleFitnessView() {
-    setState(() {
-      _showCheckin = false;
-      _showMonthView = !_showMonthView;
-    });
-  }
-
-  void _handleFitnessCardBlankTap() {
-    if (!_showCheckin && !_showMonthView) return;
-    setState(() {
-      _showCheckin = false;
-      if (_showMonthView) {
-        _showMonthView = false;
-      }
-    });
-  }
-
-  void _openCheckinForDate(DateTime date) {
+  Future<void> _openCheckinForDate(DateTime date) async {
     final existingLog = HealthStore.fitnessRecordForDate(date);
-    setState(() {
-      _checkinDate = DateTime(date.year, date.month, date.day);
-      _showCheckin = true;
-      _showMonthView = false;
-      if (existingLog != null) {
-        _selFitness = existingLog.type;
-        _hours = existingLog.minutes / 60;
-      } else {
-        _selFitness = _fitnessTypes.first;
-        _hours = 1.0;
-      }
-    });
+    final result = await showGeneralDialog<({String type, int minutes})>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '关闭运动记录',
+      barrierColor: Colors.black.withValues(alpha: 0.08),
+      transitionDuration: const Duration(milliseconds: 160),
+      pageBuilder: (_, __, ___) => _FitnessCheckinDialog(
+        date: date,
+        initialType: existingLog?.type,
+        initialMinutes: existingLog?.minutes,
+      ),
+      transitionBuilder: (ctx, anim, _, child) {
+        final curved = CurvedAnimation(parent: anim, curve: Curves.easeOut);
+        return FadeTransition(
+          opacity: curved,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.96, end: 1).animate(curved),
+            child: Center(
+              child: Material(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 360),
+                  child: child,
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    if (result == null || !mounted) return;
+    HealthStore.saveFitnessRecord(
+      date: date,
+      type: result.type,
+      minutes: result.minutes,
+    );
+    setState(() {});
   }
 
   // 根据日期推算星期标签，服务于近 7 天打卡条。
@@ -417,14 +419,14 @@ class _HealthScreenState extends State<HealthScreen> {
   }
 
   String get _periodStatusText {
-    final window = _currentPeriodWindow;
-    if (window == null) return '暂无生理期预测';
-    final today = _todayDate;
-    if (today.isBefore(window.start)) {
-      return '距离生理期还有 ${window.start.difference(today).inDays} 天';
+    if (_todayCycleDay <= 0) {
+      final window = _currentPeriodWindow;
+      if (window == null) return '暂无生理期预测';
+      return '距离月经期还有 ${window.start.difference(_todayDate).inDays} 天';
     }
-    if (today.isAfter(window.end)) return '本月生理期已结束';
-    return '生理期第 ${today.difference(window.start).inDays + 1} 天';
+    final phaseName = _currentPhaseName;
+    if (phaseName.isEmpty) return '暂无生理期数据';
+    return '当前$phaseName的第$_currentPhaseDay天';
   }
 
   String get _currentPeriodStartText {
@@ -433,16 +435,52 @@ class _HealthScreenState extends State<HealthScreen> {
     return '${window.start.month}月${window.start.day}日';
   }
 
-  String get _currentPeriodEndText {
-    final window = _currentPeriodWindow;
-    if (window == null) return '--';
-    return '${window.end.month}月${window.end.day}日';
+  /// 根据实际记录推算今天所在周期的起始日和周期长度。
+  /// 周期长度优先取相邻两次记录的实际间隔，无下次记录则取上次间隔或存储值。
+  ({DateTime cycleStart, int cycleLength})? get _activeCycleInfo {
+    final records = _safePeriodRecords;
+    if (records.isEmpty) return null;
+
+    final today = _todayDate;
+    final starts = records
+        .map((r) => _parsePeriodDate(r.start))
+        .whereType<DateTime>()
+        .toList()
+      ..sort();
+    if (starts.isEmpty) return null;
+
+    // 找到最近一个 ≤ today 的记录起始日
+    int foundIdx = -1;
+    for (int i = starts.length - 1; i >= 0; i--) {
+      if (!starts[i].isAfter(today)) {
+        foundIdx = i;
+        break;
+      }
+    }
+    if (foundIdx < 0) return null;
+
+    final base = starts[foundIdx];
+
+    // 周期长度：优先用相邻两次记录的实际间距
+    int cycleLen;
+    if (foundIdx + 1 < starts.length) {
+      cycleLen = starts[foundIdx + 1].difference(base).inDays.clamp(15, 60);
+    } else if (foundIdx > 0) {
+      cycleLen = base.difference(starts[foundIdx - 1]).inDays.clamp(15, 60);
+    } else {
+      cycleLen = math.max(records.first.cycle, 15);
+    }
+
+    // 如果今天已超出本次周期，按周期滚动到包含今天的预测周期
+    var cycleStart = base;
+    while (!today.isBefore(cycleStart.add(Duration(days: cycleLen)))) {
+      cycleStart = cycleStart.add(Duration(days: cycleLen));
+    }
+
+    return (cycleStart: cycleStart, cycleLength: cycleLen);
   }
 
-  int get _currentCycleLength {
-    final sorted = _safePeriodRecords;
-    return sorted.isEmpty ? 28 : sorted.first.cycle;
-  }
+  int get _currentCycleLength => _activeCycleInfo?.cycleLength ?? 28;
 
   int get _currentPeriodDays {
     final sorted = _safePeriodRecords;
@@ -450,24 +488,58 @@ class _HealthScreenState extends State<HealthScreen> {
   }
 
   int get _todayCycleDay {
-    final window = _currentPeriodWindow;
-    if (window == null) return 0;
-    final diff = _todayDate.difference(window.start).inDays;
-    if (diff < 0) return 0;
-    return (diff + 1).clamp(1, _currentCycleLength);
+    final info = _activeCycleInfo;
+    if (info == null) return 0;
+    final diff = _todayDate.difference(info.cycleStart).inDays;
+    return (diff + 1).clamp(1, info.cycleLength);
+  }
+
+  int get _periodFollEnd {
+    final cycle = _currentCycleLength;
+    final periodDays = _currentPeriodDays.clamp(1, 12);
+    // 月经期18% + 卵泡期29% = 47%
+    return (cycle * 0.47).round().clamp(periodDays + 1, cycle - 2);
+  }
+
+  int get _periodOvEnd {
+    final cycle = _currentCycleLength;
+    // 月经期18% + 卵泡期29% + 排卵期4% = 51%
+    return (cycle * 0.51).round().clamp(_periodFollEnd + 1, cycle - 1);
   }
 
   String get _currentPhaseName {
     final day = _todayCycleDay;
-    if (day == 0) return '--';
-    final cycle = _currentCycleLength;
+    if (day <= 0) return '';
     final periodDays = _currentPeriodDays.clamp(1, 12);
-    final follEnd = (cycle * 0.46).round().clamp(periodDays + 2, cycle - 6);
-    final ovEnd = (follEnd + 3).clamp(follEnd + 1, cycle - 3);
     if (day <= periodDays) return '月经期';
-    if (day <= follEnd) return '卵泡期';
-    if (day <= ovEnd) return '排卵期';
+    if (day <= _periodFollEnd) return '卵泡期';
+    if (day <= _periodOvEnd) return '排卵期';
     return '黄体期';
+  }
+
+  int get _currentPhaseDay {
+    final day = _todayCycleDay;
+    if (day <= 0) return 0;
+    final periodDays = _currentPeriodDays.clamp(1, 12);
+    final follEnd = _periodFollEnd;
+    final ovEnd = _periodOvEnd;
+    if (day <= periodDays) return day;
+    if (day <= follEnd) return day - periodDays;
+    if (day <= ovEnd) return day - follEnd;
+    return day - ovEnd;
+  }
+
+  String get _prevPeriodStartText {
+    final currentWindow = _currentPeriodWindow;
+    if (currentWindow == null) return '--';
+    // 查历史记录中当前期之前最近的一条，独立于本月的编辑
+    for (final r in _safePeriodRecords) {
+      final start = _parsePeriodDate(r.start);
+      if (start != null && start.isBefore(currentWindow.start)) {
+        return '${start.month}月${start.day}日';
+      }
+    }
+    return '--';
   }
 
   String get _nextPeriodStartText {
@@ -477,36 +549,54 @@ class _HealthScreenState extends State<HealthScreen> {
     return '${next.month}月${next.day}日';
   }
 
-  Future<void> _editCurrentPeriodDate({required bool editingStart}) async {
-    final record = _currentPeriodRecord;
-    final window = _currentPeriodWindow;
-    final currentStart =
-        _parsePeriodDate(record?.start ?? '') ?? window?.start ?? _todayDate;
-    final currentEnd = _parsePeriodDate(record?.end ?? '') ??
-        window?.end ??
-        currentStart.add(const Duration(days: 4));
-    final picked = await showGeneralDialog<DateTime>(
+  _PeriodRecord? get _prevPeriodRecord {
+    final currentWindow = _currentPeriodWindow;
+    if (currentWindow == null) return null;
+    for (final r in _safePeriodRecords) {
+      final start = _parsePeriodDate(r.start);
+      if (start != null && start.isBefore(currentWindow.start)) return r;
+    }
+    return null;
+  }
+
+  Future<void> _editPeriodByRecord({
+    _PeriodRecord? record,
+    DateTime? defaultStart,
+  }) async {
+    final initStart = _parsePeriodDate(record?.start ?? '') ?? defaultStart ?? _todayDate;
+    final initEnd = _parsePeriodDate(record?.end ?? '') ??
+        initStart.add(const Duration(days: 5));
+    final result = await showGeneralDialog<_PeriodRecordEditResult>(
       context: context,
       barrierDismissible: true,
-      barrierLabel: '关闭日期选择',
+      barrierLabel: '关闭生理期记录编辑',
       barrierColor: Colors.black.withValues(alpha: 0.06),
       transitionDuration: const Duration(milliseconds: 140),
-      pageBuilder: (_, __, ___) => const SizedBox.shrink(),
-      transitionBuilder: (dialogContext, animation, _, __) {
+      pageBuilder: (_, __, ___) => _PeriodRecordEditor(
+        record: record,
+        initialStart: initStart,
+        initialEnd: initEnd,
+      ),
+      transitionBuilder: (dialogContext, animation, _, child) {
         final curved =
             CurvedAnimation(parent: animation, curve: Curves.easeOut);
         return FadeTransition(
           opacity: curved,
           child: ScaleTransition(
             scale: Tween<double>(begin: 0.97, end: 1).animate(curved),
-            child: Center(
-              child: Material(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 340),
-                  child: _PeriodDateWheelSheet(
-                    initial: editingStart ? currentStart : currentEnd,
+            alignment: Alignment.topCenter,
+            child: SafeArea(
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 170, 18, 20),
+                  child: Material(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 360),
+                      child: child,
+                    ),
                   ),
                 ),
               ),
@@ -515,28 +605,15 @@ class _HealthScreenState extends State<HealthScreen> {
         );
       },
     );
-    if (picked == null) return;
-    if (!mounted) return;
-
-    final durationDays =
-        math.max(currentEnd.difference(currentStart).inDays + 1, 1);
-    var nextStart = editingStart ? picked : currentStart;
-    var nextEnd = editingStart ? currentEnd : picked;
-    if (nextEnd.isBefore(nextStart)) {
-      if (editingStart) {
-        nextEnd = nextStart.add(Duration(days: durationDays - 1));
-      } else {
-        nextStart = nextEnd;
-      }
-    }
-
+    if (result == null || !mounted) return;
     _savePeriodRecord(
       id: record?.id,
-      start: _formatPeriodDate(nextStart),
-      end: _formatPeriodDate(nextEnd),
-      cycle: record?.cycle ?? window?.cycle ?? 28,
+      start: _formatPeriodDate(result.start),
+      end: _formatPeriodDate(result.end),
+      cycle: result.cycle,
     );
   }
+
 
   void _savePeriodRecord({
     int? id,
@@ -564,7 +641,6 @@ class _HealthScreenState extends State<HealthScreen> {
   }
 
   Widget _buildMonthGrid() {
-    // 健身月视图也复用日历网格思路：先补空白格，再补 1-30 日。
     final cells = <int?>[
       ...List<int?>.filled(_calStartDay, null),
       ...List.generate(_calDays, (i) => i + 1),
@@ -572,7 +648,8 @@ class _HealthScreenState extends State<HealthScreen> {
     while (cells.length % 7 != 0) {
       cells.add(null);
     }
-    const rowHeight = 58.0;
+    // 行高加大以容纳类型+时长标签
+    const rowHeight = 74.0;
     final rowCount = cells.length ~/ 7;
     return Column(
       children: List.generate(rowCount, (rowIdx) {
@@ -584,10 +661,9 @@ class _HealthScreenState extends State<HealthScreen> {
             children: rowCells.map((d) {
               if (d == null) return const Expanded(child: SizedBox());
               final date = DateTime(_todayDate.year, _todayDate.month, d);
-              final done = _monthLog.containsKey(d);
+              final log = _monthLog[d];
+              final done = log != null;
               final isToday = d == _todayDay;
-              final isEditing =
-                  _showCheckin && DateUtils.isSameDay(date, _checkinDate);
               return Expanded(
                 child: GestureDetector(
                   onTap: () => _openCheckinForDate(date),
@@ -597,32 +673,46 @@ class _HealthScreenState extends State<HealthScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Container(
-                        width: 28,
-                        height: 28,
+                        width: 32,
+                        height: 32,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: done ? _healthAccent : Colors.transparent,
-                          border: isEditing
+                          color: done ? _healthAccent : AppColors.bgTab,
+                          border: (isToday && !done)
                               ? Border.all(color: _healthAccent, width: 1.5)
-                              : (isToday && !done
-                                  ? Border.all(color: _healthAccent, width: 1.5)
-                                  : null),
+                              : null,
                         ),
                         child: Center(
                           child: done
                               ? const Icon(Icons.check,
                                   color: Colors.white, size: 14)
                               : Text('$d',
-                                  style: TextStyle(
+                                  style: const TextStyle(
                                       fontSize: 11,
-                                      color: isToday
-                                          ? _healthAccent
-                                          : AppColors.textSecondary,
-                                      fontWeight: isToday
-                                          ? FontWeight.w600
-                                          : FontWeight.normal)),
+                                      color: AppColors.textSecondary)),
                         ),
                       ),
+                      if (done) ...[
+                        const SizedBox(height: 3),
+                        Text(log[0] as String,
+                            style: const TextStyle(
+                                fontSize: 11,
+                                color: _healthAccent,
+                                fontWeight: FontWeight.w500)),
+                        Text(_formatMinutes(log[1] as int),
+                            style: const TextStyle(
+                                fontSize: 11,
+                                color: AppColors.textSecondary)),
+                      ] else ...[
+                        // 占位保持高度一致
+                        const SizedBox(height: 3),
+                        const Text('·',
+                            style: TextStyle(
+                                fontSize: 11, color: Colors.transparent)),
+                        const Text('·',
+                            style: TextStyle(
+                                fontSize: 11, color: Colors.transparent)),
+                      ],
                     ],
                   ),
                 ),
@@ -637,33 +727,21 @@ class _HealthScreenState extends State<HealthScreen> {
   Widget _buildPeriodPhaseBar() {
     final cycle = _currentCycleLength;
     final periodDays = _currentPeriodDays.clamp(1, 12);
-    final follEnd = (cycle * 0.46).round().clamp(periodDays + 2, cycle - 6);
-    final ovEnd = (follEnd + 3).clamp(follEnd + 1, cycle - 3);
-    final follDays = follEnd - periodDays;
-    final ovDays = ovEnd - follEnd;
-    final lutealDays = cycle - ovEnd;
+    final follEnd = _periodFollEnd;
+    final ovEnd = _periodOvEnd;
     final currentDay = _todayCycleDay;
+    final phaseName = _currentPhaseName;
+    final phaseDay = _currentPhaseDay;
 
-    final phases = [
-      (label: '月经期', start: 1, flex: periodDays, color: _healthAccent),
-      (
-        label: '卵泡期',
-        start: periodDays + 1,
-        flex: follDays,
-        color: _healthAccent.withValues(alpha: 0.45)
-      ),
-      (
-        label: '排卵期',
-        start: follEnd + 1,
-        flex: ovDays,
-        color: _healthAccent.withValues(alpha: 0.28)
-      ),
-      (
-        label: '黄体期',
-        start: ovEnd + 1,
-        flex: lutealDays,
-        color: _healthAccent.withValues(alpha: 0.15)
-      ),
+    // 固定比例 18/29/4/50，视觉上不随周期变化
+    const barFlexes = [18, 29, 4, 50];
+    const barTotal = 101;
+    const phaseLabels = ['月经期', '卵泡期', '排卵期', '黄体期'];
+    const phasePoems = [
+      '月落时分，静养身心',
+      '春意渐生，元气回升',
+      '花开一瞬，生命待启',
+      '潮汐微澜，情绪轻漾',
     ];
 
     int activeIdx = -1;
@@ -682,97 +760,189 @@ class _HealthScreenState extends State<HealthScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 相位标签行：激活阶段用小矩形块包裹
-        Row(
-          children: List.generate(phases.length, (i) {
-            final p = phases[i];
-            final isActive = i == activeIdx;
-            return Expanded(
-              flex: p.flex,
-              child: isActive
-                  ? Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: _healthAccent,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        p.label,
-                        style: const TextStyle(
-                          fontSize: 10,
-                          color: Colors.white,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    )
-                  : Text(
-                      p.label,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-            );
-          }),
-        ),
-        const SizedBox(height: 6),
-        // 色条 + 当前位置小长方形指示块
-        Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Row(
-              children: List.generate(phases.length, (i) {
-                final p = phases[i];
+        // 标签行：同字号，居中于各自分段正上方，宽度不足时允许溢出相邻区域
+        SizedBox(
+          height: 16,
+          child: LayoutBuilder(builder: (_, c) {
+            double cumX = 0;
+            return Stack(
+              clipBehavior: Clip.none,
+              children: List.generate(phaseLabels.length, (i) {
+                final segW = c.maxWidth * barFlexes[i] / barTotal;
+                final centerX = cumX + segW / 2;
+                cumX += segW;
                 final isActive = i == activeIdx;
-                return Expanded(
-                  flex: p.flex,
-                  child: Container(
-                    height: 5,
-                    margin:
-                        EdgeInsets.only(right: i < phases.length - 1 ? 2 : 0),
-                    decoration: BoxDecoration(
-                      color: activeIdx == -1
-                          ? p.color
-                          : (isActive ? _healthAccent : _healthAccentLight),
-                      borderRadius: BorderRadius.circular(2.5),
+                return Positioned(
+                  top: 0,
+                  left: centerX,
+                  child: FractionalTranslation(
+                    translation: const Offset(-0.5, 0),
+                    child: Text(
+                      phaseLabels[i],
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isActive ? _healthAccent : AppColors.textSecondary,
+                        fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+                      ),
                     ),
                   ),
                 );
               }),
-            ),
-            if (currentDay > 0)
-              Positioned.fill(
-                child: LayoutBuilder(builder: (_, c) {
-                  final progress = (currentDay - 1) / math.max(cycle - 1, 1);
-                  final x =
-                      (progress * c.maxWidth - 2.5).clamp(0.0, c.maxWidth - 5);
-                  return Stack(children: [
-                    Positioned(
-                      left: x,
-                      top: -3,
-                      child: Container(
-                        width: 5,
-                        height: 11,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(2),
-                          border: Border.all(color: _healthAccent, width: 1.5),
-                        ),
+            );
+          }),
+        ),
+        const SizedBox(height: 4),
+        // 色条：固定 18/29/4/50 比例，激活段高 10px、实色；非激活段高 5px、极淡
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+            SizedBox(
+              height: 10,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: List.generate(phaseLabels.length, (i) {
+                  final isActive = i == activeIdx;
+                  return Expanded(
+                    flex: barFlexes[i],
+                    child: Container(
+                      height: isActive ? 10 : 5,
+                      margin: EdgeInsets.only(
+                          right: i < phaseLabels.length - 1 ? 4 : 0),
+                      decoration: BoxDecoration(
+                        color: isActive
+                            ? _healthAccent
+                            : _healthAccent.withValues(alpha: 0.14),
+                        borderRadius:
+                            BorderRadius.circular(isActive ? 5 : 2.5),
                       ),
                     ),
-                  ]);
+                  );
+                }),
+              ),
+            ),
+            if (currentDay > 0 && activeIdx >= 0)
+              Positioned.fill(
+                child: LayoutBuilder(builder: (_, c) {
+                  // 各期天数
+                  final phaseTotals = [
+                    periodDays,
+                    math.max(follEnd - periodDays, 1),
+                    math.max(ovEnd - follEnd, 1),
+                    math.max(cycle - ovEnd, 1),
+                  ];
+                  // 各段起始 x 和可见宽度（段之间有 4px 间隙）
+                  const segGap = 4.0;
+                  var cumX = 0.0;
+                  final segStarts = <double>[];
+                  final segVisibleW = <double>[];
+                  for (int i = 0; i < barFlexes.length; i++) {
+                    final allocW = barFlexes[i] / barTotal * c.maxWidth;
+                    segStarts.add(cumX);
+                    segVisibleW.add(
+                        allocW - (i < barFlexes.length - 1 ? segGap : 0.0));
+                    cumX += allocW;
+                  }
+                  // 当前期内进度 (0..1)
+                  final phaseProgress =
+                      phaseDay / math.max(phaseTotals[activeIdx], 1);
+                  // 圆点中心 = 段起始 + 期内进度 × 段可见宽度
+                  const dotSize = 12.0;
+                  final dotCenter = segStarts[activeIdx] +
+                      phaseProgress * segVisibleW[activeIdx];
+                  final x = (dotCenter - dotSize / 2)
+                      .clamp(0.0, c.maxWidth - dotSize);
+                  return Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Positioned(
+                        left: x,
+                        top: (10 - dotSize) / 2,
+                        child: Container(
+                          width: dotSize,
+                          height: dotSize,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white,
+                            border: Border.all(color: _healthAccent, width: 2.5),
+                            boxShadow: [
+                              const BoxShadow(
+                                color: Colors.white,
+                                blurRadius: 0,
+                                spreadRadius: 2,
+                              ),
+                              BoxShadow(
+                                color: _healthAccent.withValues(alpha: 0.4),
+                                blurRadius: 4,
+                                offset: const Offset(0, 1),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
                 }),
               ),
           ],
         ),
-        if (currentDay > 0) ...[
-          const SizedBox(height: 6),
-          Text(
-            '第 $currentDay 天 · 共 $cycle 天',
-            style: const TextStyle(
-                fontSize: 11, color: AppColors.textSecondary),
-          ),
+        // 胶囊标签：右端靠近 today 标记，左端不超出卡片
+        if (currentDay > 0 && phaseName.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          LayoutBuilder(builder: (_, c) {
+            final phaseTotals = [
+              periodDays,
+              math.max(follEnd - periodDays, 1),
+              math.max(ovEnd - follEnd, 1),
+              math.max(cycle - ovEnd, 1),
+            ];
+            const segGap = 4.0;
+            var cumX = 0.0;
+            final segStarts = <double>[];
+            final segVisibleW = <double>[];
+            for (int i = 0; i < barFlexes.length; i++) {
+              final allocW = barFlexes[i] / barTotal * c.maxWidth;
+              segStarts.add(cumX);
+              segVisibleW.add(
+                  allocW - (i < barFlexes.length - 1 ? segGap : 0.0));
+              cumX += allocW;
+            }
+            final phaseProgress =
+                phaseDay / math.max(phaseTotals[activeIdx], 1);
+            final anchorX =
+                segStarts[activeIdx] + phaseProgress * segVisibleW[activeIdx];
+            const pillW = 140.0;
+            final left = (anchorX - pillW).clamp(0.0, c.maxWidth - pillW);
+            return SizedBox(
+              height: 22,
+              child: Stack(
+                children: [
+                  Positioned(
+                    left: left,
+                    top: 0,
+                    child: Container(
+                      width: pillW,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: _healthAccent.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                      child: Text(
+                        phasePoems[activeIdx],
+                        textAlign: TextAlign.center,
+                        textScaler: TextScaler.noScaling,
+                        style: const TextStyle(
+                            fontSize: 11, color: _healthAccent),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
         ],
       ],
     );
@@ -783,7 +953,7 @@ class _HealthScreenState extends State<HealthScreen> {
     // 健康页由三块组成：健身打卡、生理期、体重记录，全部使用本地状态驱动。
     return SafeArea(
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
         children: [
           // 页面标题栏。
           Row(
@@ -792,7 +962,7 @@ class _HealthScreenState extends State<HealthScreen> {
               const Text('健康',
                   style: TextStyle(
                     fontFamily: 'XinDiXiaWuCha',
-                    fontSize: 22,
+                    fontSize: 24,
                     color: AppColors.textPrimary,
                   )),
               GestureDetector(
@@ -802,7 +972,7 @@ class _HealthScreenState extends State<HealthScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 18),
 
           // ── 健身打卡 ──
           if (_fitnessVisible) ...[
@@ -813,24 +983,27 @@ class _HealthScreenState extends State<HealthScreen> {
                   const Text('健身',
                       style: TextStyle(
                           fontSize: 13,
-                          fontWeight: FontWeight.w500,
                           color: AppColors.textPrimary)),
                   const Spacer(),
-                  GestureDetector(
-                    onTap: _toggleFitnessView,
+                  Container(
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                      color: AppColors.bgTab,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
                     child: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          _showMonthView
-                              ? Icons.view_week_outlined
-                              : Icons.calendar_view_month_outlined,
-                          size: 14,
-                          color: _healthAccent,
+                        _WeightViewChip(
+                          label: '7天',
+                          selected: !_showMonthView,
+                          onTap: () => setState(() => _showMonthView = false),
                         ),
-                        const SizedBox(width: 3),
-                        Text(_showMonthView ? '周视图' : '月视图',
-                            style: const TextStyle(
-                                fontSize: 11, color: _healthAccent)),
+                        _WeightViewChip(
+                          label: '月视图',
+                          selected: _showMonthView,
+                          onTap: () => setState(() => _showMonthView = true),
+                        ),
                       ],
                     ),
                   ),
@@ -839,7 +1012,24 @@ class _HealthScreenState extends State<HealthScreen> {
             ),
             _Card(
               child: GestureDetector(
-                onTap: _handleFitnessCardBlankTap,
+                onVerticalDragStart: (_) => _fitnessDragOffset = 0,
+                onVerticalDragUpdate: (details) {
+                  _fitnessDragOffset += details.primaryDelta ?? 0;
+                },
+                onVerticalDragEnd: (details) {
+                  final v = details.primaryVelocity ?? 0;
+                  final disp = _fitnessDragOffset;
+                  _fitnessDragOffset = 0;
+                  final expand = v > 500 || (v > 150 && disp > 60);
+                  final collapse = v < -500 || (v < -150 && disp < -60);
+                  if (expand && !_showMonthView) {
+                    HapticFeedback.lightImpact();
+                    setState(() => _showMonthView = true);
+                  } else if (collapse && _showMonthView) {
+                    HapticFeedback.lightImpact();
+                    setState(() => _showMonthView = false);
+                  }
+                },
                 behavior: HitTestBehavior.translucent,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -848,8 +1038,7 @@ class _HealthScreenState extends State<HealthScreen> {
                       children: [
                         Text('本月运动 $_totalDays 天',
                             style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
+                              fontSize: 15,
                               color: _healthAccent,
                             )),
                         const Spacer(),
@@ -858,59 +1047,53 @@ class _HealthScreenState extends State<HealthScreen> {
                                 fontSize: 11, color: AppColors.textSecondary)),
                       ],
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 16),
 
                     // 周条或月网格。
                     if (!_showMonthView) ...[
-                      // 周视图：展示截至今天的近 7 天。
+                      // 周视图：本周（周日-周六），未来日期灰显不可点。
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: _recent7Dates.map((date) {
-                          final log = HealthStore.fitnessRecordForDate(date);
+                          final isFuture = date.isAfter(_todayDate);
+                          final log = isFuture ? null : HealthStore.fitnessRecordForDate(date);
                           final isToday = DateUtils.isSameDay(date, _todayDate);
                           final done = log != null;
-                          final isEditing = _showCheckin &&
-                              DateUtils.isSameDay(date, _checkinDate);
                           return Expanded(
                             child: GestureDetector(
-                              onTap: () => _openCheckinForDate(date),
-                              onDoubleTap: done
-                                  ? () => _cancelCheckinForDate(date)
-                                  : null,
+                              onTap: isFuture ? null : () => _openCheckinForDate(date),
+                              onDoubleTap: done ? () => _cancelCheckinForDate(date) : null,
                               behavior: HitTestBehavior.opaque,
                               child: Column(
                                 children: [
                                   Text(_weekLabel(date),
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                           fontSize: 11,
-                                          color: AppColors.textSecondary)),
-                                  const SizedBox(height: 3),
+                                          color: isFuture
+                                              ? AppColors.border
+                                              : (isToday || done)
+                                                  ? _healthAccent
+                                                  : AppColors.textSecondary)),
+                                  const SizedBox(height: 8),
                                   Container(
                                     width: 32,
                                     height: 32,
                                     decoration: BoxDecoration(
                                       shape: BoxShape.circle,
-                                      color: done
-                                          ? _healthAccent
-                                          : AppColors.bgTab,
-                                      border: isEditing
-                                          ? Border.all(
-                                              color: _healthAccent, width: 1.5)
-                                          : (isToday && !done
-                                              ? Border.all(
-                                                  color: _healthAccent,
-                                                  width: 1.5)
-                                              : null),
+                                      color: done ? _healthAccent : AppColors.bgTab,
+                                      border: (!isFuture && isToday && !done)
+                                          ? Border.all(color: _healthAccent, width: 1.5)
+                                          : null,
                                     ),
                                     child: Center(
                                       child: done
-                                          ? const Icon(Icons.check,
-                                              color: Colors.white, size: 14)
+                                          ? const Icon(Icons.check, color: Colors.white, size: 14)
                                           : Text('${date.day}',
-                                              style: const TextStyle(
+                                              style: TextStyle(
                                                   fontSize: 11,
-                                                  color:
-                                                      AppColors.textSecondary)),
+                                                  color: isFuture
+                                                      ? AppColors.border
+                                                      : AppColors.textSecondary)),
                                     ),
                                   ),
                                   if (done) ...[
@@ -935,117 +1118,25 @@ class _HealthScreenState extends State<HealthScreen> {
                       // 月视图：完整展示当月 30 天打卡情况，可点击切换完成状态。
                       Row(
                         children: ['日', '一', '二', '三', '四', '五', '六']
-                            .map((w) => Expanded(
+                            .asMap()
+                            .entries
+                            .map((e) => Expanded(
                                   child: Center(
-                                    child: Text(w,
-                                        style: const TextStyle(
+                                    child: Text(e.value,
+                                        style: TextStyle(
                                             fontSize: 11,
-                                            color: AppColors.textSecondary,
+                                            color: (e.key == 0 || e.key == 6)
+                                                ? const Color(0xFFD8635F)
+                                                : AppColors.textSecondary,
                                             fontWeight: FontWeight.w500)),
                                   ),
                                 ))
                             .toList(),
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 8),
                       _buildMonthGrid(),
                     ],
 
-                    // 打卡面板：选择运动类型和时长，确认后写入 _monthLog。
-                    if (_showCheckin) ...[
-                      const SizedBox(height: 10),
-                      const Divider(color: AppColors.border, height: 1),
-                      const SizedBox(height: 10),
-                      Text('${_checkinDate.month}月${_checkinDate.day}日运动记录',
-                          style: const TextStyle(
-                              fontSize: 11, color: AppColors.textSecondary)),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: _fitnessTypes.map((t) {
-                          final sel = t == _selFitness;
-                          return GestureDetector(
-                            onTap: () => setState(() => _selFitness = t),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 5),
-                              decoration: BoxDecoration(
-                                color: sel ? _healthAccent : AppColors.bgTab,
-                                borderRadius: BorderRadius.circular(99),
-                              ),
-                              child: Text(t,
-                                  style: TextStyle(
-                                      fontSize: 13,
-                                      color: sel
-                                          ? Colors.white
-                                          : AppColors.textSecondary)),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          const Text('时长',
-                              style: TextStyle(
-                                  fontSize: 13,
-                                  color: AppColors.textSecondary)),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: SliderTheme(
-                              data: SliderTheme.of(context).copyWith(
-                                activeTrackColor: _healthAccent,
-                                thumbColor: _healthAccent,
-                                inactiveTrackColor: AppColors.bgTab,
-                                trackHeight: 3,
-                                thumbShape: const RoundSliderThumbShape(
-                                    enabledThumbRadius: 8),
-                              ),
-                              child: Slider(
-                                value: _hours,
-                                min: 0,
-                                max: 3,
-                                divisions: 12,
-                                onChanged: (v) => setState(() => _hours = v),
-                              ),
-                            ),
-                          ),
-                          SizedBox(
-                            width: 52,
-                            child: Text(_formatDuration(_hours),
-                                style: const TextStyle(
-                                    fontSize: 13,
-                                    color: AppColors.textPrimary)),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      GestureDetector(
-                        onTap: () => setState(() {
-                          HealthStore.saveFitnessRecord(
-                            date: _checkinDate,
-                            type: _selFitness,
-                            minutes: (_hours * 60).round(),
-                          );
-                          _showCheckin = false;
-                        }),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          decoration: BoxDecoration(
-                            color: _healthAccent,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Center(
-                            child: Text(
-                                '确认 · $_selFitness ${_formatDuration(_hours)}',
-                                style: const TextStyle(
-                                    fontSize: 13,
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w500)),
-                          ),
-                        ),
-                      ),
-                    ],
                   ],
                 ),
               ),
@@ -1062,7 +1153,6 @@ class _HealthScreenState extends State<HealthScreen> {
                   const Text('生理期',
                       style: TextStyle(
                           fontSize: 13,
-                          fontWeight: FontWeight.w500,
                           color: AppColors.textPrimary)),
                   const Spacer(),
                   GestureDetector(
@@ -1071,11 +1161,11 @@ class _HealthScreenState extends State<HealthScreen> {
                     child: Row(
                       children: [
                         const Icon(Icons.history,
-                            size: 14, color: _healthAccent),
+                            size: 14, color: AppColors.textSecondary),
                         const SizedBox(width: 3),
                         Text(_showPeriodHistory ? '收起' : '历史',
                             style: const TextStyle(
-                                fontSize: 11, color: _healthAccent)),
+                                fontSize: 11, color: AppColors.textSecondary)),
                       ],
                     ),
                   ),
@@ -1093,41 +1183,14 @@ class _HealthScreenState extends State<HealthScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 头部：周期天数 + 当前阶段徽标
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _periodStatusText,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                                color: _healthAccent,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const Spacer(),
-                        if (_currentPhaseName != '--')
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 9, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: _healthAccentLight,
-                              borderRadius: BorderRadius.circular(99),
-                            ),
-                            child: Text(
-                              _currentPhaseName,
-                              style: const TextStyle(
-                                  fontSize: 11, color: _healthAccent),
-                            ),
-                          ),
-                      ],
+                    Text(
+                      _periodStatusText,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        color: _healthAccent,
+                      ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 18),
                     // 四阶段进度条（含标签 + 指示点 + 刻度）
                     _buildPeriodPhaseBar(),
                     const SizedBox(height: 10),
@@ -1147,83 +1210,58 @@ class _HealthScreenState extends State<HealthScreen> {
                     else
                       Row(
                         children: [
-                          Expanded(
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: () =>
-                                  _editCurrentPeriodDate(editingStart: true),
-                              child: Container(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 11),
-                                decoration: BoxDecoration(
-                                  color: _healthAccentLight,
-                                  borderRadius: BorderRadius.circular(10),
+                          for (final (label, dateText, onTap) in [
+                            (
+                              '上月',
+                              _prevPeriodStartText,
+                              () => _editPeriodByRecord(
+                                record: _prevPeriodRecord,
+                                defaultStart: _prevPeriodRecord == null
+                                    ? _currentPeriodWindow?.start.subtract(
+                                        Duration(days: _currentCycleLength))
+                                    : null,
+                              ),
+                            ),
+                            (
+                              '本月',
+                              _currentPeriodStartText,
+                              () => _editPeriodByRecord(
+                                record: _currentPeriodRecord,
+                                defaultStart: _currentPeriodWindow?.start,
+                              ),
+                            ),
+                            ('下月', _nextPeriodStartText, null),
+                          ]) ...[
+                            if (label != '上月') const SizedBox(width: 8),
+                            Expanded(
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: onTap,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.bgTab,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(label,
+                                          style: const TextStyle(
+                                              fontSize: 11,
+                                              color: AppColors.textSecondary)),
+                                      Text(dateText,
+                                          style: const TextStyle(
+                                              fontSize: 12,
+                                              color: AppColors.textPrimary)),
+                                    ],
+                                  ),
                                 ),
-                                child: Column(children: [
-                                  const Text('开始',
-                                      style: TextStyle(
-                                          fontSize: 11,
-                                          color: AppColors.textSecondary)),
-                                  const SizedBox(height: 3),
-                                  Text(_currentPeriodStartText,
-                                      style: const TextStyle(
-                                          fontSize: 13,
-                                          color: _healthAccent,
-                                          fontWeight: FontWeight.w500)),
-                                ]),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: () =>
-                                  _editCurrentPeriodDate(editingStart: false),
-                              child: Container(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 11),
-                                decoration: BoxDecoration(
-                                  color: AppColors.bgTab,
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Column(children: [
-                                  const Text('结束',
-                                      style: TextStyle(
-                                          fontSize: 11,
-                                          color: AppColors.textSecondary)),
-                                  const SizedBox(height: 3),
-                                  Text(_currentPeriodEndText,
-                                      style: const TextStyle(
-                                          fontSize: 13,
-                                          color: _healthAccent,
-                                          fontWeight: FontWeight.w500)),
-                                ]),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 11),
-                              decoration: BoxDecoration(
-                                color: AppColors.bgTab,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Column(children: [
-                                const Text('下次',
-                                    style: TextStyle(
-                                        fontSize: 11,
-                                        color: AppColors.textSecondary)),
-                                const SizedBox(height: 3),
-                                Text(_nextPeriodStartText,
-                                    style: const TextStyle(
-                                        fontSize: 13,
-                                        color: _healthAccent,
-                                        fontWeight: FontWeight.w500)),
-                              ]),
-                            ),
-                          ),
+                          ],
                         ],
                       ),
                   ],
@@ -1372,10 +1410,7 @@ class _PeriodHistoryState extends State<_PeriodHistory> {
                 ),
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onLongPress: () {
-                    HapticFeedback.selectionClick();
-                    _startEdit(p);
-                  },
+                  onTap: () => _startEdit(p),
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 10),
                     decoration: BoxDecoration(
@@ -1447,7 +1482,9 @@ class _PeriodRecordEditResult {
 
 class _PeriodRecordEditor extends StatefulWidget {
   final _PeriodRecord? record;
-  const _PeriodRecordEditor({this.record});
+  final DateTime? initialStart;
+  final DateTime? initialEnd;
+  const _PeriodRecordEditor({this.record, this.initialStart, this.initialEnd});
 
   @override
   State<_PeriodRecordEditor> createState() => _PeriodRecordEditorState();
@@ -1465,8 +1502,10 @@ class _PeriodRecordEditorState extends State<_PeriodRecordEditor> {
     final record = widget.record;
     final today = DateTime.now();
     _startDate = _parsePeriodDate(record?.start ?? '') ??
+        widget.initialStart ??
         DateTime(today.year, today.month, today.day);
     _endDate = _parsePeriodDate(record?.end ?? '') ??
+        widget.initialEnd ??
         _startDate.add(const Duration(days: 5));
     _cycleCtrl = TextEditingController(text: '${record?.cycle ?? 28}');
   }
@@ -1857,8 +1896,6 @@ class _WeightCardState extends State<_WeightCard> {
 
   double _weightForDate(DateTime date) => WeightStore.weightForDate(date);
 
-  double _weightForDay(int day) =>
-      _weightForDate(DateTime(_currentMonth.year, _currentMonth.month, day));
 
   Future<void> _editWeightDate(DateTime date) async {
     final value = await showGeneralDialog<double>(
@@ -1941,21 +1978,61 @@ class _WeightCardState extends State<_WeightCard> {
     });
   }
 
-  String get _recentChangeText {
-    final first = _weightForDay(_visibleWeightStartDay);
-    final current = _weightForDay(_visibleSelectedDay);
-    final diff = current - first;
-    if (diff.abs() < 0.05) return '近7天体重基本持平';
-    final label = diff < 0 ? '减重' : '增重';
-    return '近7天$label ${diff.abs().toStringAsFixed(1)} kg';
+  // 本周变化（带符号）
+  String get _weekChangeStat {
+    final first = _chartPoints
+        .firstWhere((p) => p.weight > 0,
+            orElse: () => _WeightPoint(0, 0))
+        .weight;
+    final last = _chartPoints
+        .lastWhere((p) => p.weight > 0,
+            orElse: () => _WeightPoint(0, 0))
+        .weight;
+    if (first == 0 || last == 0) return '--';
+    final diff = last - first;
+    if (diff.abs() < 0.05) return '持平';
+    return '${diff > 0 ? '+' : ''}${diff.toStringAsFixed(1)} kg';
   }
 
-  String get _ninetyDayChangeText {
-    final points = _ninetyDayPoints;
-    final diff = points.last.weight - points.first.weight;
-    if (diff.abs() < 0.05) return '近90天体重基本持平';
-    final label = diff < 0 ? '减重' : '增重';
-    return '近90天$label ${diff.abs().toStringAsFixed(1)} kg';
+  // 近90天变化（带符号）
+  String get _monthChangeStat {
+    final pts = _ninetyDayPoints.where((p) => p.weight > 0).toList();
+    if (pts.length < 2) return '--';
+    final diff = pts.last.weight - pts.first.weight;
+    if (diff.abs() < 0.05) return '持平';
+    return '${diff > 0 ? '+' : ''}${diff.toStringAsFixed(1)} kg';
+  }
+
+  // 本周均值
+  String get _weekAvgStat {
+    final pts = _chartPoints.where((p) => p.weight > 0).toList();
+    if (pts.isEmpty) return '--';
+    final avg = pts.map((p) => p.weight).reduce((a, b) => a + b) / pts.length;
+    return '${avg.toStringAsFixed(1)} kg';
+  }
+
+  // 近90天均值
+  String get _monthAvgStat {
+    final pts = _ninetyDayPoints.where((p) => p.weight > 0).toList();
+    if (pts.isEmpty) return '--';
+    final avg = pts.map((p) => p.weight).reduce((a, b) => a + b) / pts.length;
+    return '${avg.toStringAsFixed(1)} kg';
+  }
+
+  // 本周最低
+  String get _weekMinStat {
+    final pts = _chartPoints.where((p) => p.weight > 0).toList();
+    if (pts.isEmpty) return '--';
+    final min = pts.map((p) => p.weight).reduce(math.min);
+    return '${min.toStringAsFixed(1)} kg';
+  }
+
+  // 近90天最低
+  String get _monthMinStat {
+    final pts = _ninetyDayPoints.where((p) => p.weight > 0).toList();
+    if (pts.isEmpty) return '--';
+    final min = pts.map((p) => p.weight).reduce(math.min);
+    return '${min.toStringAsFixed(1)} kg';
   }
 
   @override
@@ -1974,7 +2051,6 @@ class _WeightCardState extends State<_WeightCard> {
               const Text('体重',
                   style: TextStyle(
                       fontSize: 13,
-                      fontWeight: FontWeight.w500,
                       color: AppColors.textPrimary)),
               const Spacer(),
               Container(
@@ -2005,33 +2081,17 @@ class _WeightCardState extends State<_WeightCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 0),
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () => _editWeight(_todayDay),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
-                  children: [
-                    Text(_todayWeight.toStringAsFixed(1),
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w500,
-                          color: _healthAccent,
-                        )),
-                    const SizedBox(width: 3),
-                    const Text('kg',
-                        style: TextStyle(
-                            fontSize: 13, color: AppColors.textSecondary)),
-                    const SizedBox(width: 6),
-                    const Icon(Icons.edit_outlined,
-                        size: 13, color: AppColors.textSecondary),
-                  ],
+                child: Text(
+                  '今日体重  ${_todayWeight > 0 ? _todayWeight.toStringAsFixed(1) : '--'} kg',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    color: _healthAccent,
+                  ),
                 ),
               ),
-              Text('今日 · ${_todayDate.month}月$_todayDay日',
-                  style: const TextStyle(
-                      fontSize: 11, color: AppColors.textSecondary)),
               const SizedBox(height: 12),
               if (_isWeightMonthView)
                 LayoutBuilder(
@@ -2104,37 +2164,41 @@ class _WeightCardState extends State<_WeightCard> {
                     );
                   },
                 ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
+              // 三列统计行：本周/本月 · 均值 · 最低
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                decoration: BoxDecoration(
-                  color: AppColors.bgPage,
-                  borderRadius: BorderRadius.circular(10),
+                decoration: const BoxDecoration(
+                  border: Border(
+                      top: BorderSide(color: AppColors.border, width: 1)),
                 ),
-                child: Row(
-                  children: [
-                    Icon(
-                      (_isWeightMonthView
-                              ? ninetyDayPoints.last.weight <=
-                                  ninetyDayPoints.first.weight
-                              : _weightForDay(_visibleSelectedDay) <=
-                                  _weightForDay(_visibleWeightStartDay))
-                          ? Icons.trending_down
-                          : Icons.trending_up,
-                      size: 16,
-                      color: _healthAccent,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                        _isWeightMonthView
-                            ? _ninetyDayChangeText
-                            : _recentChangeText,
-                        style: const TextStyle(
-                            fontSize: 13,
-                            color: AppColors.textPrimary,
-                            fontWeight: FontWeight.w500)),
-                  ],
+                padding: const EdgeInsets.only(top: 12),
+                child: IntrinsicHeight(
+                  child: Row(
+                    children: [
+                      _WeightStat(
+                        label: _isWeightMonthView ? '本月' : '本周',
+                        value: _isWeightMonthView
+                            ? _monthChangeStat
+                            : _weekChangeStat,
+                      ),
+                      const VerticalDivider(
+                          color: AppColors.border, width: 1, thickness: 1),
+                      _WeightStat(
+                        label: '均值',
+                        value: _isWeightMonthView
+                            ? _monthAvgStat
+                            : _weekAvgStat,
+                      ),
+                      const VerticalDivider(
+                          color: AppColors.border, width: 1, thickness: 1),
+                      _WeightStat(
+                        label: '最低',
+                        value: _isWeightMonthView
+                            ? _monthMinStat
+                            : _weekMinStat,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -2317,7 +2381,7 @@ class _WeightNinetyDayPainter extends CustomPainter {
     void label(String text, double x) {
       textPainter.text = TextSpan(
         text: text,
-        style: const TextStyle(fontSize: 8, color: AppColors.textSecondary),
+        style: const TextStyle(fontSize: 10, color: AppColors.textSecondary),
       );
       textPainter.layout();
       final dx = (x - textPainter.width / 2)
@@ -2337,7 +2401,7 @@ class _WeightNinetyDayPainter extends CustomPainter {
     textPainter.text = TextSpan(
       text: '${points.last.weight.toStringAsFixed(1)}kg',
       style: const TextStyle(
-          fontSize: 10, color: _healthAccent, fontWeight: FontWeight.w600),
+          fontSize: 11, color: _healthAccent, fontWeight: FontWeight.w600),
     );
     textPainter.layout();
     textPainter.paint(canvas, Offset(size.width - textPainter.width, 0));
@@ -2398,22 +2462,32 @@ class _WeightChartPainter extends CustomPainter {
     final textPainter = TextPainter(textDirection: TextDirection.ltr);
     for (int i = 0; i < points.length; i++) {
       final selected = points[i].day == selectedDay;
+      final hasWeight = points[i].weight > 0;
       final dotPaint = Paint()
         ..color = selected ? _healthAccent : _healthAccent.withAlpha(210)
         ..style = PaintingStyle.fill;
       canvas.drawCircle(offsets[i], selected ? 5 : 3, dotPaint);
-      if (selected) {
+
+      if (hasWeight) {
         textPainter.text = TextSpan(
-          text: '${points[i].weight.toStringAsFixed(1)}kg',
-          style: const TextStyle(fontSize: 9, color: _healthAccent),
+          text: points[i].weight.toStringAsFixed(1),
+          style: TextStyle(
+            fontSize: 10,
+            color: _healthAccent,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+          ),
         );
         textPainter.layout();
-        textPainter.paint(canvas, offsets[i] + const Offset(-14, -20));
+        final lx = (offsets[i].dx - textPainter.width / 2)
+            .clamp(0.0, size.width - textPainter.width);
+        final ly = math.max(0.0, offsets[i].dy - textPainter.height - 4);
+        textPainter.paint(canvas, Offset(lx, ly));
       }
+
       textPainter.text = TextSpan(
         text: '${points[i].day}日',
         style: TextStyle(
-          fontSize: 7,
+          fontSize: 10,
           color: selected ? _healthAccent : AppColors.textSecondary,
           fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
         ),
@@ -2431,6 +2505,33 @@ class _WeightChartPainter extends CustomPainter {
   }
 }
 
+// 体重三列统计单元。
+class _WeightStat extends StatelessWidget {
+  final String label;
+  final String value;
+  const _WeightStat({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 12, color: AppColors.textSecondary)),
+          const SizedBox(width: 5),
+          Text(value,
+              style: const TextStyle(
+                  fontSize: 12, color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w500)),
+        ],
+      ),
+    );
+  }
+}
+
 // 卡片容器。
 class _Card extends StatelessWidget {
   final Widget child;
@@ -2438,19 +2539,176 @@ class _Card extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 健康页统一卡片容器，保持边框、圆角和轻阴影一致。
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.border),
         boxShadow: const [
           BoxShadow(
-              color: AppColors.shadow, blurRadius: 4, offset: Offset(0, 1))
+              color: Color(0x0A4A3728), blurRadius: 6, offset: Offset(0, 2))
         ],
       ),
       child: child,
+    );
+  }
+}
+
+// 打卡弹窗（悬浮对话框，不展开卡片）。
+class _FitnessCheckinDialog extends StatefulWidget {
+  final DateTime date;
+  final String? initialType;
+  final int? initialMinutes;
+
+  const _FitnessCheckinDialog({
+    required this.date,
+    this.initialType,
+    this.initialMinutes,
+  });
+
+  @override
+  State<_FitnessCheckinDialog> createState() => _FitnessCheckinDialogState();
+}
+
+class _FitnessCheckinDialogState extends State<_FitnessCheckinDialog> {
+  late String _sel;
+  late double _hours;
+
+  @override
+  void initState() {
+    super.initState();
+    _sel = widget.initialType ?? _fitnessTypes.first;
+    _hours = widget.initialMinutes != null ? widget.initialMinutes! / 60 : 1.0;
+  }
+
+  String _fmt(double h) {
+    if (h == 0) return '未记录';
+    if (h < 1) return '${(h * 60).round()}分钟';
+    if (h == h.truncate()) return '${h.toInt()}小时';
+    return '${h.toStringAsFixed(1)}小时';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('${widget.date.month}月${widget.date.day}日运动记录',
+              style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary)),
+          const SizedBox(height: 14),
+          Row(
+            children: _fitnessTypes.asMap().entries.map((e) {
+              final t = e.value;
+              final sel = t == _sel;
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() => _sel = t),
+                  child: Container(
+                    margin: EdgeInsets.only(left: e.key == 0 ? 0 : 5),
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    decoration: BoxDecoration(
+                      color: sel ? _healthAccent : AppColors.bgTab,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                    child: Text(t,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            fontSize: 13,
+                            color:
+                                sel ? Colors.white : AppColors.textSecondary)),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              const Text('时长',
+                  style:
+                      TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    activeTrackColor: _healthAccent,
+                    thumbColor: _healthAccent,
+                    inactiveTrackColor: AppColors.bgTab,
+                    trackHeight: 3,
+                    thumbShape:
+                        const RoundSliderThumbShape(enabledThumbRadius: 8),
+                  ),
+                  child: Slider(
+                    value: _hours,
+                    min: 0,
+                    max: 3,
+                    divisions: 12,
+                    onChanged: (v) => setState(() => _hours = v),
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: 52,
+                child: Text(_fmt(_hours),
+                    style: const TextStyle(
+                        fontSize: 13, color: AppColors.textPrimary)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppColors.bgTab,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Center(
+                      child: Text('取消',
+                          style: TextStyle(
+                              fontSize: 13, color: AppColors.textSecondary)),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => Navigator.pop(
+                    context,
+                    (type: _sel, minutes: (_hours * 60).round()),
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: _healthAccent,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Center(
+                      child: Text('确认 · $_sel ${_fmt(_hours)}',
+                          style: const TextStyle(
+                              fontSize: 13,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w500)),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

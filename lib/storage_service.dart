@@ -15,7 +15,9 @@ class StorageService {
   }
 
   static int? getInt(String key) => _prefs.getInt(key);
-  static void setInt(String key, int value) => _prefs.setInt(key, value);
+  static void setInt(String key, int value) {
+    _prefs.setInt(key, value).catchError((_) => false);
+  }
 
   static bool? getBool(String key) => _prefs.getBool(key);
   static void setBool(String key, bool value) {

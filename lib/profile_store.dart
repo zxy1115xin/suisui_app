@@ -22,7 +22,8 @@ class ProfileStore {
       nickname = m['nickname'] as String? ?? nickname;
       final ms = m['birthdayMs'] as int?;
       if (ms != null) birthday = DateTime.fromMillisecondsSinceEpoch(ms);
-      height = (m['height'] as num?)?.toDouble() ?? height;
+      final loadedHeight = (m['height'] as num?)?.toDouble() ?? 0;
+      if (loadedHeight > 0) height = loadedHeight;
     } catch (_) {}
   }
 
