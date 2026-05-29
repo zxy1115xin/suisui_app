@@ -69,7 +69,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       barrierDismissible: true,
       barrierLabel: '关闭个人信息编辑窗',
       barrierColor: Colors.black.withValues(alpha: 0.06),
-      transitionDuration: const Duration(milliseconds: 140),
+      transitionDuration: const Duration(milliseconds: 190),
       pageBuilder: (_, __, ___) => const SizedBox.shrink(),
       transitionBuilder: (dialogContext, animation, _, __) {
         final curved =

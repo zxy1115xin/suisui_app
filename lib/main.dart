@@ -119,7 +119,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _index = i);
     _pageCtrl.animateToPage(
       i,
-      duration: const Duration(milliseconds: 320),
+      duration: const Duration(milliseconds: 420),
       curve: Curves.easeInOutCubic,
     );
   }
@@ -129,6 +129,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       body: PageView(
         controller: _pageCtrl,
+        physics: const BouncingScrollPhysics(),
         onPageChanged: (i) {
           if (i == _index) return;
           HapticFeedback.selectionClick();
@@ -207,7 +208,7 @@ class _BottomNav extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       AnimatedContainer(
-                        duration: const Duration(milliseconds: 220),
+                        duration: const Duration(milliseconds: 280),
                         curve: Curves.easeOutCubic,
                         padding: const EdgeInsets.symmetric(
                             horizontal: 14, vertical: 5),

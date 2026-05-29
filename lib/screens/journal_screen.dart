@@ -82,7 +82,7 @@ class _JournalScreenState extends State<JournalScreen>
       barrierDismissible: true,
       barrierLabel: '关闭填写框',
       barrierColor: Colors.black.withValues(alpha: 0.06),
-      transitionDuration: const Duration(milliseconds: 140),
+      transitionDuration: const Duration(milliseconds: 190),
       pageBuilder: (_, __, ___) => const SizedBox.shrink(),
       transitionBuilder: (dialogContext, animation, _, __) {
         final curved =
@@ -1166,7 +1166,7 @@ class _DateWheelField extends StatelessWidget {
           barrierDismissible: true,
           barrierLabel: '关闭日期选择',
           barrierColor: Colors.black.withValues(alpha: 0.06),
-          transitionDuration: const Duration(milliseconds: 140),
+          transitionDuration: const Duration(milliseconds: 190),
           pageBuilder: (_, __, ___) => const SizedBox.shrink(),
           transitionBuilder: (dialogContext, animation, _, __) {
             final curved =
@@ -1241,6 +1241,9 @@ class _DateWheelSheetState extends State<_DateWheelSheet> {
   late int _year;
   late int _month;
   late int _day;
+  late final FixedExtentScrollController _yearCtrl;
+  late final FixedExtentScrollController _monthCtrl;
+  late final FixedExtentScrollController _dayCtrl;
 
   @override
   void initState() {
@@ -1249,11 +1252,30 @@ class _DateWheelSheetState extends State<_DateWheelSheet> {
     _month = widget.initial.month;
     _day = widget.initial.day;
     _fixDay();
+    _yearCtrl =
+        FixedExtentScrollController(initialItem: _year - widget.yearStart);
+    _monthCtrl = FixedExtentScrollController(initialItem: _month - 1);
+    _dayCtrl = FixedExtentScrollController(initialItem: _day - 1);
   }
 
-  void _fixDay() {
+  @override
+  void dispose() {
+    _yearCtrl.dispose();
+    _monthCtrl.dispose();
+    _dayCtrl.dispose();
+    super.dispose();
+  }
+
+  void _fixDay({bool syncController = false}) {
     final maxDay = DateUtils.getDaysInMonth(_year, _month);
-    if (_day > maxDay) _day = maxDay;
+    if (_day <= maxDay) return;
+    _day = maxDay;
+    if (!syncController) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _dayCtrl.hasClients) {
+        _dayCtrl.jumpToItem(_day - 1);
+      }
+    });
   }
 
   @override
@@ -1292,30 +1314,27 @@ class _DateWheelSheetState extends State<_DateWheelSheet> {
                 children: [
                   _WheelColumn(
                     key: ValueKey('year-${widget.yearStart}-${widget.yearEnd}'),
-                    controller: FixedExtentScrollController(
-                        initialItem: _year - widget.yearStart),
+                    controller: _yearCtrl,
                     count: years.length,
                     labelBuilder: (index) => '${years[index]}年',
                     onSelected: (index) => setState(() {
                       _year = years[index];
-                      _fixDay();
+                      _fixDay(syncController: true);
                     }),
                   ),
                   _WheelColumn(
                     key: const ValueKey('month'),
-                    controller:
-                        FixedExtentScrollController(initialItem: _month - 1),
+                    controller: _monthCtrl,
                     count: 12,
                     labelBuilder: (index) => '${index + 1}月',
                     onSelected: (index) => setState(() {
                       _month = index + 1;
-                      _fixDay();
+                      _fixDay(syncController: true);
                     }),
                   ),
                   _WheelColumn(
-                    key: ValueKey('day-$maxDay-$_day'),
-                    controller:
-                        FixedExtentScrollController(initialItem: _day - 1),
+                    key: ValueKey('day-$maxDay'),
+                    controller: _dayCtrl,
                     count: maxDay,
                     labelBuilder: (index) => '${index + 1}日',
                     onSelected: (index) => setState(() => _day = index + 1),

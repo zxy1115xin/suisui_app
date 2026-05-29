@@ -191,6 +191,7 @@ class ImportantDateStore {
   }
 
   static Future<void> _loadEvents() async {
+    _events.clear();
     final raw = StorageService.getString(_eventsKey);
     if (raw == null) {
       _events.addAll([
@@ -215,6 +216,7 @@ class ImportantDateStore {
   }
 
   static Future<void> _loadBirthdays() async {
+    _birthdays.clear();
     final raw = StorageService.getString(_birthdaysKey);
     if (raw == null) {
       _birthdays.addAll([
@@ -238,6 +240,7 @@ class ImportantDateStore {
   }
 
   static Future<void> _loadAnniversaries() async {
+    _anniversaries.clear();
     final raw = StorageService.getString(_anniversariesKey);
     if (raw == null) {
       _anniversaries.addAll([

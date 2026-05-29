@@ -1,6 +1,6 @@
 {
-    "name": "suisui_app",
-    "short_name": "suisui_app",
+    "name": "月亮小记",
+    "short_name": "月亮小记",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

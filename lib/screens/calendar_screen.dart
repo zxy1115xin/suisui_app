@@ -1196,8 +1196,8 @@ class _MonthViewState extends State<_MonthView> {
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     return AnimatedSize(
-                      duration: const Duration(milliseconds: 220),
-                      curve: Curves.easeOutCubic,
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOutCubic,
                       alignment: Alignment.topCenter,
                       child: _mode == _MonthCalendarMode.week
                           ? _buildWeekCalendarStrip()
@@ -1623,7 +1623,7 @@ class _CalendarInfoPanels extends StatelessWidget {
       barrierDismissible: true,
       barrierLabel: '关闭',
       barrierColor: Colors.black.withValues(alpha: 0.06),
-      transitionDuration: const Duration(milliseconds: 140),
+      transitionDuration: const Duration(milliseconds: 190),
       pageBuilder: (_, __, ___) => const SizedBox.shrink(),
       transitionBuilder: (dialogContext, animation, _, __) {
         final curved =

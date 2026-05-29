@@ -43,6 +43,7 @@ dev_dependencies:
   # 该包提供的 lint 集合会在项目根目录的 `analysis_options.yaml` 中启用。
   # 如需了解如何关闭某些 lint 或启用更多规则，请查看该文件。
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
 
 # 关于此文件中通用 Dart 配置的说明，请参见：
 # https://dart.dev/tools/pub/pubspec
@@ -56,3 +57,15 @@ flutter:
 
   assets:
     - assets/
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon.png"
+  remove_alpha_ios: true
+  web:
+    generate: true
+    image_path: "assets/icon.png"
+  windows:
+    generate: true
+    image_path: "assets/icon.png"
